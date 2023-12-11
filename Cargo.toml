@@ -1,0 +1,22 @@
+[package]
+name = "clack-hot-reload"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clack-plugin = { workspace = true }
+clack-host = { workspace = true }
+clack-extensions = { workspace = true }
+
+[workspace]
+resolver = "2"
+members = [
+    "examples/polysynth"
+]
+
+[workspace.dependencies]
+clack-plugin = { path = "../rust-clap/plugin", version = "0.1.0" }
+clack-host = { path = "../rust-clap/host", version = "0.1.0" }
+clack-extensions = { path = "../rust-clap/extensions", version = "0.1.0" }

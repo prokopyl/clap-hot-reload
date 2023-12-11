@@ -1,0 +1,14 @@
+[package]
+name = "clack-plugin-polysynth-reloadable"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clack-plugin = { workspace = true }
+clack-extensions = { workspace = true, features = ["audio-ports", "clack-plugin", "note-ports", "params", "state"] }
+clack-hot-reload = { path = "../.." }

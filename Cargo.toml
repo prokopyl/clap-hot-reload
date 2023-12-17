@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 clack-plugin = { workspace = true }
 clack-host = { workspace = true }
-clack-extensions = { workspace = true }
+clack-extensions = { workspace = true, features = ["audio-ports", "clack-host", "clack-plugin"] }
 
 [workspace]
 resolver = "2"

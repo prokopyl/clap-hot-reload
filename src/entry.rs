@@ -88,10 +88,11 @@ impl PluginFactory for HotReloaderPluginFactory {
             host_info,
             matching_descriptor,
             move |host| {
+                let shared_host = host.shared();
                 let instance = WrapperHost::new_instance(host, plugin_bundle, &plugin_id);
                 Ok((
-                    WrapperPluginShared::new(host, instance.handle()),
-                    move |host, shared| WrapperPluginMainThread::new(host, shared, instance),
+                    WrapperPluginShared::new(shared_host, instance.handle()),
+                    move |shared| WrapperPluginMainThread::new(host, shared, instance),
                 ))
             },
         ))

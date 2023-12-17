@@ -1,4 +1,5 @@
 use crate::wrapper_host::WrapperHost;
+use clack_extensions::audio_ports::{AudioPortInfoWriter, PluginAudioPorts, PluginAudioPortsImpl};
 use clack_host::plugin::PluginInstanceHandle;
 use clack_host::prelude::*;
 use clack_plugin::prelude::*;
@@ -12,6 +13,19 @@ impl Plugin for WrapperPlugin {
 
     fn get_descriptor() -> Box<dyn PluginDescriptor> {
         unreachable!()
+    }
+
+    fn declare_extensions(builder: &mut PluginExtensions<Self>, shared: &Self::Shared<'_>) {
+        // TODO: this locks a lot
+        shared
+            .plugin_handle
+            .use_shared_host_data(|shared| {
+                let plugin_data = shared.plugin.get().unwrap();
+                if plugin_data.audio_ports.is_some() {
+                    builder.register::<PluginAudioPorts>();
+                }
+            })
+            .unwrap();
     }
 }
 
@@ -137,16 +151,11 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     fn deactivate(self, main_thread: &mut WrapperPluginMainThread<'a>) {
         main_thread
             .plugin_instance
-            .deactivate(self.audio_processor.try_into().unwrap());
+            .deactivate(self.audio_processor.stopped());
     }
 
     fn reset(&mut self) {
         // FIXME: there's no reset on host
-        match self.audio_processor {
-            PluginAudioProcessor::Started(s) => s,
-            PluginAudioProcessor::Stopped(_) => {}
-            PluginAudioProcessor::Poisoned => {}
-        }
         todo!()
     }
 
@@ -157,5 +166,25 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
     fn stop_processing(&mut self) {
         self.audio_processor.stop_processing().unwrap(); // TODO: unwrap
+    }
+}
+
+impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
+    fn count(&self, is_input: bool) -> u32 {
+        self.shared
+            .plugin_handle
+            .use_shared_host_data(|shared| {
+                // TODO: unwraps
+                let plugin_data = shared.plugin.get().unwrap();
+                plugin_data
+                    .audio_ports
+                    .unwrap()
+                    .count(&self.plugin_instance.main_thread_plugin_data(), is_input)
+            })
+            .unwrap()
+    }
+
+    fn get(&self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
+        todo!()
     }
 }

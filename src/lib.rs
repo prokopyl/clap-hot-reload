@@ -1,6 +1,5 @@
 mod entry;
-mod wrapper_host;
-mod wrapper_plugin;
+mod wrapper;
 
 #[doc(hidden)]
 pub mod _macro_utils {

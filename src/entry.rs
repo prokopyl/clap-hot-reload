@@ -1,5 +1,4 @@
-use crate::wrapper_host::WrapperHost;
-use crate::wrapper_plugin::{WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
+use crate::wrapper::{WrapperHost, WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
 use clack_host::prelude::PluginBundle;
 use clack_plugin::entry::prelude::*;
 use std::ffi::{CStr, CString};

@@ -1,4 +1,4 @@
-use crate::wrapper::{WrapperHostMainThread, WrapperPluginMainThread};
+use crate::wrapper::*;
 use clack_extensions::audio_ports::*;
 
 impl<'a> HostAudioPortsImpl for WrapperHostMainThread<'a> {
@@ -21,22 +21,20 @@ impl<'a> HostAudioPortsImpl for WrapperHostMainThread<'a> {
 
 impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
     fn count(&self, is_input: bool) -> u32 {
-        self.plugin_instance
-            .main_thread_host_data()
-            .audio_ports_count(is_input)
-    }
-
-    fn get(&self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
-        todo!()
-    }
-}
-
-impl<'a> WrapperHostMainThread<'a> {
-    pub fn audio_ports_count(&self, is_input: bool) -> u32 {
-        let Some(audio_ports) = self.shared.wrapped_plugin().audio_ports else {
+        let host = self.plugin_instance.main_thread_host_data();
+        let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
             todo!()
         };
 
-        audio_ports.count(self.plugin.as_ref().unwrap(), is_input)
+        audio_ports.count(host.plugin.as_ref().unwrap(), is_input)
+    }
+
+    fn get(&self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
+        let host = self.plugin_instance.main_thread_host_data();
+        let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
+            todo!()
+        };
+
+        audio_ports.get_to_writer(host.plugin.as_ref().unwrap(), is_input, index, writer);
     }
 }

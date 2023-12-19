@@ -1,4 +1,4 @@
-use crate::wrapper::{WrapperHost, WrapperPluginMainThread, WrapperPluginShared};
+use crate::wrapper::*;
 use clack_host::prelude::{
     InputAudioBuffers, OutputAudioBuffers, PluginAudioConfiguration, ProcessStatus,
 };
@@ -9,7 +9,7 @@ use clack_plugin::prelude::{Audio, Events, Process};
 pub struct WrapperPluginAudioProcessor<'a> {
     host: HostAudioThreadHandle<'a>,
     shared: &'a WrapperPluginShared<'a>,
-    audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
+    pub(crate) audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
 }
 
 impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThread<'a>>
@@ -21,12 +21,22 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         shared: &'a WrapperPluginShared<'a>,
         audio_config: AudioConfiguration,
     ) -> Result<Self, PluginError> {
+        // This is a really ugly hack, due to the fact that plugin instances are essentially 'static
+        // for now. This is fixed in the plugin-instance-sublifetimes branch of clack but is blocked
+        // on a borrow checker limitation bug:
+        // https://internals.rust-lang.org/t/is-due-to-current-limitations-in-the-borrow-checker-overzealous/17818
+        let host: HostAudioThreadHandle<'static> = unsafe { core::mem::transmute(host) };
+
         // TODO: why are the audio configs different...
         // TODO: unwrap
         let audio_processor = main_thread
             .plugin_instance
             .activate(
-                |_, _, _| (),
+                |plugin, shared, _| WrapperHostAudioProcessor {
+                    parent: host,
+                    shared,
+                    plugin,
+                },
                 PluginAudioConfiguration {
                     frames_count_range: audio_config.min_sample_count
                         ..=audio_config.max_sample_count,

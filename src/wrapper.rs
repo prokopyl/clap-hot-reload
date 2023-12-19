@@ -49,7 +49,7 @@ impl WrapperHost {
 impl Host for WrapperHost {
     type Shared<'a> = WrapperHostShared<'a>;
     type MainThread<'a> = WrapperHostMainThread<'a>;
-    type AudioProcessor<'a> = ();
+    type AudioProcessor<'a> = WrapperHostAudioProcessor<'a>;
 
     fn declare_extensions(builder: &mut HostExtensions<Self>, shared: &Self::Shared<'_>) {
         shared.parent.declare_to_plugin(builder)
@@ -113,6 +113,14 @@ impl<'a> HostMainThread<'a> for WrapperHostMainThread<'a> {
         self.plugin = Some(instance)
     }
 }
+
+pub struct WrapperHostAudioProcessor<'a> {
+    shared: &'a WrapperHostShared<'a>,
+    plugin: PluginAudioProcessorHandle<'a>,
+    parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
+}
+
+impl<'a> HostAudioProcessor<'a> for WrapperHostAudioProcessor<'a> {}
 
 pub struct WrapperPlugin;
 

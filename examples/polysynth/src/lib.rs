@@ -25,8 +25,9 @@ impl Plugin for PolySynthPlugin {
         use std::ffi::CStr;
 
         Box::new(StaticPluginDescriptor {
-            id: CStr::from_bytes_with_nul(b"org.rust-audio.clack.polysynth\0").unwrap(),
-            name: CStr::from_bytes_with_nul(b"Clack PolySynth Example\0").unwrap(),
+            id: CStr::from_bytes_with_nul(b"org.rust-audio.clack-hotreload.polysynth\0").unwrap(),
+            name: CStr::from_bytes_with_nul(b"Clack PolySynth Example (Hot reload version)\0")
+                .unwrap(),
             features: Some(&[SYNTHESIZER, MONO, INSTRUMENT]),
             ..Default::default()
         })

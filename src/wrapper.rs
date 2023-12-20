@@ -13,8 +13,28 @@ use audio_processor::*;
 mod extensions;
 use extensions::*;
 
+// TODO: better conversion
 fn clone_host_info(parent_host_info: &clack_plugin::host::HostInfo) -> HostInfo {
-    todo!()
+    // TODO: all of the unwraps omg
+    HostInfo::new(
+        parent_host_info
+            .name()
+            .map(|s| s.to_str().unwrap())
+            .unwrap_or_default(),
+        parent_host_info
+            .vendor()
+            .map(|s| s.to_str().unwrap())
+            .unwrap_or_default(),
+        parent_host_info
+            .url()
+            .map(|s| s.to_str().unwrap())
+            .unwrap_or_default(),
+        parent_host_info
+            .version()
+            .map(|s| s.to_str().unwrap())
+            .unwrap_or_default(),
+    )
+    .unwrap()
 }
 
 impl WrapperHost {

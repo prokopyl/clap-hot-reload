@@ -1,6 +1,8 @@
 use crate::wrapper::*;
 use clack_extensions::params::implementation::*;
 use std::ffi::CString;
+use std::fmt::Write;
+use std::mem::MaybeUninit;
 
 // FIXME: Plugin params trait name + module paths are inconsistent
 impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
@@ -21,7 +23,7 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
             todo!()
         };
 
-        todo!() // Writer version
+        params.get_info_to_writer(host.plugin.as_ref().unwrap(), param_index, info)
     }
 
     fn get_value(&self, param_id: u32) -> Option<f64> {
@@ -46,7 +48,13 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
             todo!()
         };
 
-        todo!() // Writer version
+        let mut buf = [MaybeUninit::zeroed(); 128];
+        let str = params
+            .value_to_text(host.plugin.as_ref().unwrap(), param_id, value, &mut buf)
+            .ok_or(core::fmt::Error)?;
+
+        // FIXME: all of this is super ugly
+        writer.write_str(core::str::from_utf8(str).unwrap())
     }
 
     fn text_to_value(&self, param_id: u32, text: &str) -> Option<f64> {

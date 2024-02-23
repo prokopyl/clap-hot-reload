@@ -1,5 +1,5 @@
+use crate::watcher::WatcherMaster;
 use crate::wrapper::{WrapperHost, WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
-use clack_host::prelude::PluginBundle;
 use clack_plugin::entry::prelude::*;
 use std::ffi::{CStr, CString};
 
@@ -24,41 +24,40 @@ impl HotReloaderEntry {
         bundle_path: &CStr,
         inner_entry: &'static EntryDescriptor,
     ) -> Result<Self, EntryLoadError> {
-        let bundle_path = bundle_path.to_str().map_err(|_| EntryLoadError)?;
-        let bundle = unsafe { PluginBundle::load_from_raw(inner_entry, bundle_path) }
-            .map_err(|_| EntryLoadError)?;
+        let watcher = WatcherMaster::new(inner_entry, bundle_path)?;
 
-        match bundle.get_plugin_factory() {
-            None => Ok(Self {
+        if watcher.initial_bundle().get_plugin_factory().is_none() {
+            return Ok(Self {
                 plugin_factory: None,
-            }),
-            Some(_) => Ok(Self {
-                plugin_factory: Some(PluginFactoryWrapper::new(HotReloaderPluginFactory::new(
-                    bundle,
-                ))),
-            }),
+            });
         }
+
+        Ok(Self {
+            plugin_factory: Some(PluginFactoryWrapper::new(HotReloaderPluginFactory::new(
+                watcher,
+            ))),
+        })
     }
 }
 
 struct HotReloaderPluginFactory {
-    inner_bundle: PluginBundle,
-    descriptors: Vec<PluginDescriptorWrapper>,
+    watcher: WatcherMaster,
+    descriptors: Vec<PluginDescriptor>,
 }
 
 impl HotReloaderPluginFactory {
-    pub fn new(inner_bundle: PluginBundle) -> Self {
-        let descriptors = if let Some(factory) = inner_bundle.get_plugin_factory() {
+    pub fn new(watcher: WatcherMaster) -> Self {
+        let descriptors = if let Some(factory) = watcher.initial_bundle().get_plugin_factory() {
             factory
                 .plugin_descriptors()
-                .map(|d| PluginDescriptorWrapper::new(Box::new(ClonedPluginDescriptor::new(&d))))
+                .filter_map(clone_plugin_descriptor)
                 .collect()
         } else {
             vec![]
         };
 
         Self {
-            inner_bundle,
+            watcher,
             descriptors,
         }
     }
@@ -69,11 +68,11 @@ impl PluginFactory for HotReloaderPluginFactory {
         self.descriptors.len() as u32
     }
 
-    fn plugin_descriptor(&self, index: u32) -> Option<&PluginDescriptorWrapper> {
+    fn plugin_descriptor(&self, index: u32) -> Option<&PluginDescriptor> {
         self.descriptors.get(index as usize)
     }
 
-    fn instantiate_plugin<'a>(
+    fn create_plugin<'a>(
         &'a self,
         host_info: HostInfo<'a>,
         plugin_id: &CStr,
@@ -81,16 +80,21 @@ impl PluginFactory for HotReloaderPluginFactory {
         let matching_descriptor = self.descriptors.iter().find(|d| d.id() == plugin_id)?;
 
         let plugin_id: CString = plugin_id.into();
-        let plugin_bundle = self.inner_bundle.clone();
 
         Some(PluginInstance::<'a>::new_with::<WrapperPlugin, _>(
             host_info,
             matching_descriptor,
             move |host| {
                 let shared_host = host.shared();
-                let instance = WrapperHost::new_instance(host, plugin_bundle, &plugin_id);
+                let watcher_handle = self
+                    .watcher
+                    .create_handle(move || shared_host.request_callback());
+
+                let instance =
+                    WrapperHost::new_instance(host, watcher_handle.current_bundle(), &plugin_id);
+
                 Ok((
-                    WrapperPluginShared::new(shared_host, instance.handle()),
+                    WrapperPluginShared::new(shared_host, instance.handle(), watcher_handle),
                     move |shared| WrapperPluginMainThread::new(host, shared, instance),
                 ))
             },
@@ -98,73 +102,15 @@ impl PluginFactory for HotReloaderPluginFactory {
     }
 }
 
-// TODO: bikeshed
-struct ClonedPluginDescriptor {
-    id: CString,
-    name: CString,
-    vendor: Option<CString>,
-    url: Option<CString>,
-    manual_url: Option<CString>,
-    support_url: Option<CString>,
-    version: Option<CString>,
-    description: Option<CString>,
-    features: Vec<CString>,
-}
-
-impl ClonedPluginDescriptor {
-    pub fn new(wrapped: &clack_host::factory::PluginDescriptor) -> Self {
-        Self {
-            id: wrapped.id().unwrap_or_default().into(),
-            name: wrapped.name().unwrap_or_default().into(),
-            vendor: wrapped.vendor().map(|s| s.into()),
-            url: wrapped.url().map(|s| s.into()),
-            manual_url: wrapped.manual_url().map(|s| s.into()),
-            support_url: wrapped.support_url().map(|s| s.into()),
-            version: wrapped.version().map(|s| s.into()),
-            description: wrapped.description().map(|s| s.into()),
-            features: wrapped.features().map(|s| s.into()).collect(),
-        }
-    }
-}
-
-impl clack_plugin::prelude::PluginDescriptor for ClonedPluginDescriptor {
-    fn id(&self) -> &CStr {
-        &self.id
-    }
-
-    fn name(&self) -> &CStr {
-        &self.name
-    }
-
-    fn vendor(&self) -> Option<&CStr> {
-        self.vendor.as_deref()
-    }
-
-    fn url(&self) -> Option<&CStr> {
-        self.url.as_deref()
-    }
-
-    fn manual_url(&self) -> Option<&CStr> {
-        self.manual_url.as_deref()
-    }
-
-    fn support_url(&self) -> Option<&CStr> {
-        self.support_url.as_deref()
-    }
-
-    fn version(&self) -> Option<&CStr> {
-        self.version.as_deref()
-    }
-
-    fn description(&self) -> Option<&CStr> {
-        self.description.as_deref()
-    }
-
-    fn feature_at(&self, index: usize) -> Option<&CStr> {
-        self.features.get(index).map(|s| s.as_c_str())
-    }
-
-    fn features_count(&self) -> usize {
-        self.features.len()
-    }
+fn clone_plugin_descriptor(
+    desc: clack_host::factory::PluginDescriptor,
+) -> Option<PluginDescriptor> {
+    PluginDescriptor::new(desc.id()?.to_str().ok()?, desc.name().to_str().ok()?)
+        .with_vendor(desc.vendor()?.to_str().ok().unwrap_or(""))
+        .with_url(desc.url()?.to_str().ok().unwrap_or(""))
+        .with_manual_url(desc.manual_url()?.to_str().ok().unwrap_or(""))
+        .with_support_url(desc.support_url()?.to_str().ok().unwrap_or(""))
+        .with_version(desc.version()?.to_str().ok().unwrap_or(""))
+        .with_description(desc.description()?.to_str().ok().unwrap_or(""))
+        .with_features(desc.features())
 }

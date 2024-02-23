@@ -10,6 +10,10 @@ clack-plugin = { workspace = true }
 clack-host = { workspace = true }
 clack-extensions = { workspace = true, features = ["audio-ports", "note-ports", "params", "state", "clack-host", "clack-plugin"] }
 
+crossbeam-channel = "0.5.9"
+notify-debouncer-full = "0.3.1"
+libloading = "0.8.1"
+
 [workspace]
 resolver = "2"
 members = [

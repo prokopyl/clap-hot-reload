@@ -11,6 +11,7 @@ mod audio_processor;
 use audio_processor::*;
 
 mod extensions;
+use crate::watcher::WatcherHandle;
 use extensions::*;
 
 // TODO: better conversion
@@ -40,7 +41,7 @@ fn clone_host_info(parent_host_info: &clack_plugin::host::HostInfo) -> HostInfo 
 impl WrapperHost {
     pub fn new_instance(
         host: HostMainThreadHandle,
-        bundle: PluginBundle,
+        bundle: &PluginBundle,
         instantiated_plugin_id: &CStr,
     ) -> PluginInstance<Self> {
         let info = clone_host_info(&host.shared().info());
@@ -56,7 +57,7 @@ impl WrapperHost {
         let instance = PluginInstance::<WrapperHost>::new(
             |_| WrapperHostShared::<'_>::new(shared),
             |s| WrapperHostMainThread::new(s, host),
-            &bundle,
+            bundle,
             instantiated_plugin_id,
             &info,
         )
@@ -149,10 +150,6 @@ impl Plugin for WrapperPlugin {
     type Shared<'a> = WrapperPluginShared<'a>;
     type MainThread<'a> = WrapperPluginMainThread<'a>;
 
-    fn get_descriptor() -> Box<dyn PluginDescriptor> {
-        unreachable!()
-    }
-
     fn declare_extensions(builder: &mut PluginExtensions<Self>, shared: &Self::Shared<'_>) {
         // TODO: this locks a lot
         shared
@@ -166,22 +163,24 @@ impl Plugin for WrapperPlugin {
 pub struct WrapperPluginShared<'a> {
     host: HostHandle<'a>,
     plugin_handle: PluginInstanceHandle<WrapperHost>,
+    watcher_handle: WatcherHandle<'a>,
 }
 
 impl<'a> WrapperPluginShared<'a> {
-    pub fn new(host: HostHandle<'a>, plugin_handle: PluginInstanceHandle<WrapperHost>) -> Self {
+    pub fn new(
+        host: HostHandle<'a>,
+        plugin_handle: PluginInstanceHandle<WrapperHost>,
+        watcher_handle: WatcherHandle<'a>,
+    ) -> Self {
         Self {
             host,
             plugin_handle,
+            watcher_handle,
         }
     }
 }
 
-impl<'a> PluginShared<'a> for WrapperPluginShared<'a> {
-    fn new(_host: HostHandle<'a>) -> Result<Self, PluginError> {
-        unreachable!()
-    }
-}
+impl<'a> PluginShared<'a> for WrapperPluginShared<'a> {}
 
 pub struct WrapperPluginMainThread<'a> {
     host: HostMainThreadHandle<'a>,
@@ -190,14 +189,11 @@ pub struct WrapperPluginMainThread<'a> {
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
-    fn new(
-        _host: HostMainThreadHandle<'a>,
-        _shared: &'a WrapperPluginShared<'a>,
-    ) -> Result<Self, PluginError> {
-        unreachable!()
-    }
-
     fn on_main_thread(&mut self) {
+        if let Some(new_bundle) = self.shared.watcher_handle.check_new_bundle_available() {
+            todo!()
+        }
+
         self.plugin_instance.call_on_main_thread_callback()
     }
 }

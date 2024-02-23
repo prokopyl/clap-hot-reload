@@ -20,21 +20,21 @@ impl<'a> HostAudioPortsImpl for WrapperHostMainThread<'a> {
 }
 
 impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
-    fn count(&self, is_input: bool) -> u32 {
-        let host = self.plugin_instance.main_thread_host_data();
+    fn count(&mut self, is_input: bool) -> u32 {
+        let host = self.plugin_instance.main_thread_host_data_mut();
         let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
             todo!()
         };
 
-        audio_ports.count(host.plugin.as_ref().unwrap(), is_input)
+        audio_ports.count(host.plugin.as_mut().unwrap(), is_input)
     }
 
-    fn get(&self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
-        let host = self.plugin_instance.main_thread_host_data();
+    fn get(&mut self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
+        let host = self.plugin_instance.main_thread_host_data_mut();
         let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
             todo!()
         };
 
-        audio_ports.get_to_writer(host.plugin.as_ref().unwrap(), is_input, index, writer);
+        audio_ports.get_to_writer(host.plugin.as_mut().unwrap(), is_input, index, writer);
     }
 }

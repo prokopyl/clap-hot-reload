@@ -1,6 +1,8 @@
 extern crate core;
 
 mod entry;
+mod util;
+mod watcher;
 mod wrapper;
 
 #[doc(hidden)]
@@ -16,8 +18,14 @@ macro_rules! export_reloadable_clap_entry {
         $crate::_macro_utils::clack_export_entry!(
             $crate::_macro_utils::HotReloaderEntry,
             ({
-                static WRAPPED_ENTRY: $crate::_macro_utils::EntryDescriptor = $entry_value;
-                |p| $crate::_macro_utils::HotReloaderEntry::new(p, &WRAPPED_ENTRY)
+                #[allow(non_upper_case_globals, missing_docs)]
+                #[allow(unsafe_code)]
+                #[allow(warnings, unused)]
+                #[no_mangle]
+                pub static __clack_hotreload_wrapped_entry: $crate::_macro_utils::EntryDescriptor =
+                    $entry_value;
+
+                |p| $crate::_macro_utils::HotReloaderEntry::new(p, &__clack_hotreload_wrapped_entry)
             })
         );
     };

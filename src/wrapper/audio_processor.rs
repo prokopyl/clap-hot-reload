@@ -1,7 +1,5 @@
 use crate::wrapper::*;
-use clack_host::prelude::{
-    InputAudioBuffers, OutputAudioBuffers, PluginAudioConfiguration, ProcessStatus,
-};
+use clack_host::prelude::{PluginAudioConfiguration, ProcessStatus};
 use clack_plugin::host::HostAudioThreadHandle;
 use clack_plugin::plugin::{AudioConfiguration, PluginAudioProcessor, PluginError};
 use clack_plugin::prelude::{Audio, Events, Process};
@@ -58,14 +56,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         mut audio: Audio,
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
-        let frames_count = audio.frames_count();
-
-        let (audio_inputs, audio_outputs) = audio.raw_buffers();
-        let audio_inputs =
-            unsafe { InputAudioBuffers::from_raw_buffers(audio_inputs, frames_count) };
-
-        let mut audio_outputs =
-            unsafe { OutputAudioBuffers::from_raw_buffers(audio_outputs, frames_count) };
+        let (audio_inputs, mut audio_outputs) = AudioPorts::from_plugin_audio_mut(&mut audio);
 
         self.audio_processor
             .ensure_processing_started()
@@ -76,7 +67,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                 events.input,
                 events.output,
                 process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
-                Some(frames_count as usize),                         // FIXME usize consistency
+                None,
                 process.transport,
             )
             .map_err(|_| PluginError::OperationFailed)
@@ -85,7 +76,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     fn deactivate(self, main_thread: &mut WrapperPluginMainThread<'a>) {
         main_thread
             .plugin_instance
-            .deactivate(self.audio_processor.stopped());
+            .deactivate(self.audio_processor.into_stopped());
     }
 
     fn reset(&mut self) {

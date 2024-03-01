@@ -23,18 +23,24 @@ impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
     fn count(&mut self, is_input: bool) -> u32 {
         let host = self.plugin_instance.main_thread_host_data_mut();
         let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
-            todo!()
+            return 0;
         };
 
         audio_ports.count(host.plugin.as_mut().unwrap(), is_input)
     }
 
-    fn get(&mut self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
+    fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         let host = self.plugin_instance.main_thread_host_data_mut();
         let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
-            todo!()
+            return;
         };
 
-        audio_ports.get_to_writer(host.plugin.as_mut().unwrap(), is_input, index, writer);
+        let mut buf = AudioPortInfoBuffer::new();
+
+        if let Some(data) =
+            audio_ports.get(host.plugin.as_mut().unwrap(), index, is_input, &mut buf)
+        {
+            writer.set(&data)
+        }
     }
 }

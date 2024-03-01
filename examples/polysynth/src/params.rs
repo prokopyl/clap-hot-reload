@@ -1,10 +1,7 @@
 //! Contains all types and implementations related to parameter management.
 
 use crate::{PolySynthAudioProcessor, PolySynthPluginMainThread};
-use clack_extensions::params::implementation::{
-    ParamDisplayWriter, ParamInfoWriter, PluginAudioProcessorParams, PluginMainThreadParams,
-};
-use clack_extensions::params::info::{ParamInfoData, ParamInfoFlags};
+use clack_extensions::params::*;
 use clack_extensions::state::PluginStateImpl;
 use clack_plugin::events::spaces::CoreEventSpace;
 use clack_plugin::prelude::*;
@@ -85,27 +82,27 @@ impl<'a> PluginStateImpl for PolySynthPluginMainThread<'a> {
 }
 
 impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
-    fn count(&self) -> u32 {
+    fn count(&mut self) -> u32 {
         1
     }
 
-    fn get_info(&self, param_index: u32, info: &mut ParamInfoWriter) {
+    fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
         if param_index != 0 {
             return;
         }
-        info.set(&ParamInfoData {
+        info.set(&ParamInfo {
             id: 1,
             flags: ParamInfoFlags::IS_AUTOMATABLE,
             cookie: Default::default(),
-            name: "Volume",
-            module: "",
+            name: b"Volume",
+            module: b"",
             min_value: 0.0,
             max_value: 1.0,
             default_value: DEFAULT_VOLUME as f64,
         })
     }
 
-    fn get_value(&self, param_id: u32) -> Option<f64> {
+    fn get_value(&mut self, param_id: u32) -> Option<f64> {
         if param_id == 1 {
             Some(self.shared.params.get_volume() as f64)
         } else {
@@ -114,7 +111,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     }
 
     fn value_to_text(
-        &self,
+        &mut self,
         param_id: u32,
         value: f64,
         writer: &mut ParamDisplayWriter,
@@ -126,7 +123,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
         }
     }
 
-    fn text_to_value(&self, param_id: u32, text: &str) -> Option<f64> {
+    fn text_to_value(&mut self, param_id: u32, text: &str) -> Option<f64> {
         if param_id == 1 {
             let text = text.strip_suffix('%').unwrap_or(text).trim();
             let percentage: f64 = text.parse().ok()?;

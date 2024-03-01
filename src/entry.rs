@@ -81,36 +81,55 @@ impl PluginFactory for HotReloaderPluginFactory {
 
         let plugin_id: CString = plugin_id.into();
 
-        Some(PluginInstance::<'a>::new_with::<WrapperPlugin, _>(
-            host_info,
-            matching_descriptor,
-            move |host| {
-                let shared_host = host.shared();
-                let watcher_handle = self
-                    .watcher
-                    .create_handle(move || shared_host.request_callback());
+        Some(
+            PluginInstance::<'a>::new_with_initializer::<WrapperPlugin, _>(
+                host_info,
+                matching_descriptor,
+                move |host| {
+                    let shared_host = host.shared();
+                    let watcher_handle = self
+                        .watcher
+                        .create_handle(move || shared_host.request_callback());
 
-                let instance =
-                    WrapperHost::new_instance(host, watcher_handle.current_bundle(), &plugin_id);
+                    let instance = WrapperHost::new_instance(
+                        host,
+                        watcher_handle.current_bundle(),
+                        &plugin_id,
+                    );
 
-                Ok((
-                    WrapperPluginShared::new(shared_host, instance.handle(), watcher_handle),
-                    move |shared| WrapperPluginMainThread::new(host, shared, instance),
-                ))
-            },
-        ))
+                    Ok((
+                        WrapperPluginShared::new(shared_host, instance.handle(), watcher_handle),
+                        move |shared| WrapperPluginMainThread::new(host, shared, instance),
+                    ))
+                },
+            ),
+        )
     }
 }
 
 fn clone_plugin_descriptor(
     desc: clack_host::factory::PluginDescriptor,
 ) -> Option<PluginDescriptor> {
-    PluginDescriptor::new(desc.id()?.to_str().ok()?, desc.name().to_str().ok()?)
-        .with_vendor(desc.vendor()?.to_str().ok().unwrap_or(""))
-        .with_url(desc.url()?.to_str().ok().unwrap_or(""))
-        .with_manual_url(desc.manual_url()?.to_str().ok().unwrap_or(""))
-        .with_support_url(desc.support_url()?.to_str().ok().unwrap_or(""))
-        .with_version(desc.version()?.to_str().ok().unwrap_or(""))
-        .with_description(desc.description()?.to_str().ok().unwrap_or(""))
-        .with_features(desc.features())
+    Some(
+        PluginDescriptor::new(desc.id()?.to_str().ok()?, desc.name()?.to_str().ok()?)
+            .with_vendor(desc.vendor().and_then(|s| s.to_str().ok()).unwrap_or(""))
+            .with_url(desc.url().and_then(|s| s.to_str().ok()).unwrap_or(""))
+            .with_manual_url(
+                desc.manual_url()
+                    .and_then(|s| s.to_str().ok())
+                    .unwrap_or(""),
+            )
+            .with_support_url(
+                desc.support_url()
+                    .and_then(|s| s.to_str().ok())
+                    .unwrap_or(""),
+            )
+            .with_version(desc.version().and_then(|s| s.to_str().ok()).unwrap_or(""))
+            .with_description(
+                desc.description()
+                    .and_then(|s| s.to_str().ok())
+                    .unwrap_or(""),
+            )
+            .with_features(desc.features()),
+    )
 }

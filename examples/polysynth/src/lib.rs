@@ -20,25 +20,37 @@ impl Plugin for PolySynthPlugin {
     type Shared<'a> = PolySynthPluginShared;
     type MainThread<'a> = PolySynthPluginMainThread<'a>;
 
-    fn get_descriptor() -> Box<dyn PluginDescriptor> {
-        use clack_plugin::plugin::descriptor::features::*;
-        use std::ffi::CStr;
-
-        Box::new(StaticPluginDescriptor {
-            id: CStr::from_bytes_with_nul(b"org.rust-audio.clack-hotreload.polysynth\0").unwrap(),
-            name: CStr::from_bytes_with_nul(b"Clack PolySynth Example (Hot reload version)\0")
-                .unwrap(),
-            features: Some(&[SYNTHESIZER, MONO, INSTRUMENT]),
-            ..Default::default()
-        })
-    }
-
     fn declare_extensions(builder: &mut PluginExtensions<Self>, _shared: &PolySynthPluginShared) {
         builder
             .register::<PluginAudioPorts>()
             .register::<PluginNotePorts>()
             .register::<PluginParams>()
             .register::<PluginState>();
+    }
+}
+
+impl DefaultPluginFactory for PolySynthPlugin {
+    fn get_descriptor() -> PluginDescriptor {
+        use clack_plugin::plugin::features::*;
+
+        PluginDescriptor::new(
+            "org.rust-audio.clack-hotreload.polysynth",
+            "Clack PolySynth Example (Hot reload version)",
+        )
+        .with_features([SYNTHESIZER, MONO, INSTRUMENT])
+    }
+
+    fn new_shared(_host: HostHandle) -> Result<PolySynthPluginShared, PluginError> {
+        Ok(PolySynthPluginShared {
+            params: PolySynthParams::new(),
+        })
+    }
+
+    fn new_main_thread<'a>(
+        _host: HostMainThreadHandle<'a>,
+        shared: &'a PolySynthPluginShared,
+    ) -> Result<PolySynthPluginMainThread<'a>, PluginError> {
+        Ok(PolySynthPluginMainThread { shared })
     }
 }
 
@@ -137,7 +149,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
 }
 
 impl<'a> PluginAudioPortsImpl for PolySynthPluginMainThread<'a> {
-    fn count(&self, is_input: bool) -> u32 {
+    fn count(&mut self, is_input: bool) -> u32 {
         if is_input {
             0
         } else {
@@ -145,9 +157,9 @@ impl<'a> PluginAudioPortsImpl for PolySynthPluginMainThread<'a> {
         }
     }
 
-    fn get(&self, is_input: bool, index: u32, writer: &mut AudioPortInfoWriter) {
+    fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         if !is_input && index == 0 {
-            writer.set(&AudioPortInfoData {
+            writer.set(&AudioPortInfo {
                 id: 1,
                 name: b"main",
                 channel_count: 1,
@@ -160,7 +172,7 @@ impl<'a> PluginAudioPortsImpl for PolySynthPluginMainThread<'a> {
 }
 
 impl<'a> PluginNotePortsImpl for PolySynthPluginMainThread<'a> {
-    fn count(&self, is_input: bool) -> u32 {
+    fn count(&mut self, is_input: bool) -> u32 {
         if is_input {
             1
         } else {
@@ -168,9 +180,9 @@ impl<'a> PluginNotePortsImpl for PolySynthPluginMainThread<'a> {
         }
     }
 
-    fn get(&self, is_input: bool, index: u32, writer: &mut NotePortInfoWriter) {
+    fn get(&mut self, index: u32, is_input: bool, writer: &mut NotePortInfoWriter) {
         if is_input && index == 0 {
-            writer.set(&NotePortInfoData {
+            writer.set(&NotePortInfo {
                 id: 1,
                 name: b"main",
                 preferred_dialect: Some(NoteDialect::Clap),
@@ -186,13 +198,7 @@ pub struct PolySynthPluginShared {
     params: PolySynthParams,
 }
 
-impl<'a> PluginShared<'a> for PolySynthPluginShared {
-    fn new(_host: HostHandle<'a>) -> Result<Self, PluginError> {
-        Ok(Self {
-            params: PolySynthParams::new(),
-        })
-    }
-}
+impl<'a> PluginShared<'a> for PolySynthPluginShared {}
 
 /// The data that belongs to the main thread of our plugin.
 pub struct PolySynthPluginMainThread<'a> {
@@ -200,13 +206,6 @@ pub struct PolySynthPluginMainThread<'a> {
     shared: &'a PolySynthPluginShared,
 }
 
-impl<'a> PluginMainThread<'a, PolySynthPluginShared> for PolySynthPluginMainThread<'a> {
-    fn new(
-        _host: HostMainThreadHandle<'a>,
-        shared: &'a PolySynthPluginShared,
-    ) -> Result<Self, PluginError> {
-        Ok(Self { shared })
-    }
-}
+impl<'a> PluginMainThread<'a, PolySynthPluginShared> for PolySynthPluginMainThread<'a> {}
 
 export_reloadable_clap_entry!(clack_entry!(SinglePluginEntry<PolySynthPlugin>));

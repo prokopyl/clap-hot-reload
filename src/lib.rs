@@ -1,7 +1,6 @@
 extern crate core;
 
 mod entry;
-mod util;
 mod watcher;
 mod wrapper;
 

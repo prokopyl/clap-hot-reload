@@ -1,7 +1,7 @@
 use clack_host::bundle::*;
 use clack_plugin::entry::EntryLoadError;
 use libloading::Library;
-use std::ffi::{CStr, OsStr};
+use std::ffi::CStr;
 use std::ops::Deref;
 
 // TODO: bikeshed

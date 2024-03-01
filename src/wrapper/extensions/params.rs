@@ -1,5 +1,5 @@
 use crate::wrapper::*;
-use clack_extensions::params::implementation::*;
+use clack_extensions::params::*;
 use std::ffi::CString;
 use std::fmt::Write;
 use std::mem::MaybeUninit;
@@ -16,21 +16,25 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         params.count(host.plugin.as_mut().unwrap())
     }
 
-    fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
+    fn get_info(&mut self, param_index: u32, writer: &mut ParamInfoWriter) {
         let host = self.plugin_instance.main_thread_host_data_mut();
 
         let Some(params) = host.shared.wrapped_plugin().params else {
-            todo!()
+            return;
         };
 
-        params.get_info_to_writer(host.plugin.as_mut().unwrap(), param_index, info)
+        let mut buf = ParamInfoBuffer::new();
+
+        if let Some(info) = params.get_info(host.plugin.as_mut().unwrap(), param_index, &mut buf) {
+            writer.set(&info);
+        }
     }
 
     fn get_value(&mut self, param_id: u32) -> Option<f64> {
         let host = self.plugin_instance.main_thread_host_data_mut();
 
         let Some(params) = host.shared.wrapped_plugin().params else {
-            todo!()
+            return None;
         };
 
         params.get_value(host.plugin.as_mut().unwrap(), param_id)

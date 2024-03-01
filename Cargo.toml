@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 clack-plugin = { workspace = true }
-clack-host = { workspace = true }
+clack-host = { workspace = true, features = ["clack-plugin"] }
 clack-extensions = { workspace = true, features = ["audio-ports", "note-ports", "params", "state", "clack-host", "clack-plugin"] }
 
 crossbeam-channel = "0.5.9"

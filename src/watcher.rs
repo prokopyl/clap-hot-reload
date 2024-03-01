@@ -25,7 +25,7 @@ impl WatcherMaster {
         let notifier = new_debouncer(
             Duration::from_millis(750),
             None,
-            WatcherEventThread::new(path.clone()),
+            WatcherEventThread::new(path.clone(), initial_bundle.clone()),
         );
 
         let notifier = match notifier {

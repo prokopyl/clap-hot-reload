@@ -1,3 +1,4 @@
+use crate::util::load_if_different_bundle;
 use crate::watcher::WatcherMaster;
 use crate::wrapper::{WrapperHost, WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
 use clack_host::bundle::PluginBundle;
@@ -141,38 +142,14 @@ fn clone_plugin_descriptor(
     )
 }
 
-const WRAPPED_ENTRY_SYMBOL_NAME: &CStr =
-    unsafe { CStr::from_bytes_with_nul_unchecked(b"__clack_hotreload_wrapped_entry\0") };
-
-fn do_load_bikeshed_me(
-    initial_entry: &EntryDescriptor,
-    self_path: &str,
-) -> Result<Option<PluginBundle>, EntryLoadError> {
-    let lib = unsafe { Library::new(self_path) }.map_err(|_| EntryLoadError)?;
-
-    let symbol =
-        unsafe { lib.get::<*mut EntryDescriptor>(WRAPPED_ENTRY_SYMBOL_NAME.to_bytes_with_nul()) }
-            .map_err(|_| EntryLoadError)?;
-
-    let loaded_entry: &*mut EntryDescriptor = &*symbol;
-    if core::ptr::eq(initial_entry, *loaded_entry) {
-        return Ok(None);
-    }
-
-    let bundle = unsafe {
-        PluginBundle::load_from_symbol_in_library(self_path, lib, WRAPPED_ENTRY_SYMBOL_NAME)
-    }
-    .map_err(|_| EntryLoadError)?;
-
-    Ok(Some(bundle))
-}
-
 fn load_initial_bundle(
     initial_entry: &'static EntryDescriptor,
     self_path: &str,
 ) -> Result<PluginBundle, EntryLoadError> {
-    let bundle = if let Ok(Some(different_bundle)) = do_load_bikeshed_me(initial_entry, self_path) {
-        println!("Different bundle loaded");
+    let bundle = if let Ok(Some(different_bundle)) =
+        load_if_different_bundle(initial_entry, Path::new(self_path))
+    {
+        println!("Different bundle loaded. AAAA");
         different_bundle
     } else {
         println!("Loading from the same bundle");

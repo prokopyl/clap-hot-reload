@@ -1,7 +1,10 @@
 use crate::watcher::WatcherMaster;
 use crate::wrapper::{WrapperHost, WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
+use clack_host::bundle::PluginBundle;
 use clack_plugin::entry::prelude::*;
+use libloading::Library;
 use std::ffi::{CStr, CString};
+use std::path::Path;
 
 pub struct HotReloaderEntry {
     plugin_factory: Option<PluginFactoryWrapper<HotReloaderPluginFactory>>,
@@ -24,13 +27,17 @@ impl HotReloaderEntry {
         bundle_path: &CStr,
         inner_entry: &'static EntryDescriptor,
     ) -> Result<Self, EntryLoadError> {
-        let watcher = WatcherMaster::new(inner_entry, bundle_path)?;
+        // TODO: unwrap
+        let bundle_path = bundle_path.to_str().unwrap();
+        let initial_bundle = load_initial_bundle(inner_entry, bundle_path)?;
 
-        if watcher.initial_bundle().get_plugin_factory().is_none() {
+        if initial_bundle.get_plugin_factory().is_none() {
             return Ok(Self {
                 plugin_factory: None,
             });
         }
+
+        let watcher = WatcherMaster::new(initial_bundle, Path::new(bundle_path));
 
         Ok(Self {
             plugin_factory: Some(PluginFactoryWrapper::new(HotReloaderPluginFactory::new(
@@ -132,4 +139,47 @@ fn clone_plugin_descriptor(
             )
             .with_features(desc.features()),
     )
+}
+
+const WRAPPED_ENTRY_SYMBOL_NAME: &CStr =
+    unsafe { CStr::from_bytes_with_nul_unchecked(b"__clack_hotreload_wrapped_entry\0") };
+
+fn do_load_bikeshed_me(
+    initial_entry: &EntryDescriptor,
+    self_path: &str,
+) -> Result<Option<PluginBundle>, EntryLoadError> {
+    let lib = unsafe { Library::new(self_path) }.map_err(|_| EntryLoadError)?;
+
+    let symbol =
+        unsafe { lib.get::<*mut EntryDescriptor>(WRAPPED_ENTRY_SYMBOL_NAME.to_bytes_with_nul()) }
+            .map_err(|_| EntryLoadError)?;
+
+    let loaded_entry: &*mut EntryDescriptor = &*symbol;
+    if core::ptr::eq(initial_entry, *loaded_entry) {
+        return Ok(None);
+    }
+
+    let bundle = unsafe {
+        PluginBundle::load_from_symbol_in_library(self_path, lib, WRAPPED_ENTRY_SYMBOL_NAME)
+    }
+    .map_err(|_| EntryLoadError)?;
+
+    Ok(Some(bundle))
+}
+
+fn load_initial_bundle(
+    initial_entry: &'static EntryDescriptor,
+    self_path: &str,
+) -> Result<PluginBundle, EntryLoadError> {
+    let bundle = if let Ok(Some(different_bundle)) = do_load_bikeshed_me(initial_entry, self_path) {
+        println!("Different bundle loaded");
+        different_bundle
+    } else {
+        println!("Loading from the same bundle");
+        // TODO: double utf8 check
+        unsafe { PluginBundle::load_from_raw(initial_entry, self_path) }
+            .map_err(|_| EntryLoadError)?
+    };
+
+    Ok(bundle)
 }

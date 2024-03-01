@@ -190,9 +190,9 @@ pub struct WrapperPluginMainThread<'a> {
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
     fn on_main_thread(&mut self) {
-        if let Some(new_bundle) = self.shared.watcher_handle.check_new_bundle_available() {
+        /* if let Some(new_bundle) = self.shared.watcher_handle.check_new_bundle_available() {
             todo!()
-        }
+        } */
 
         self.plugin_instance.call_on_main_thread_callback()
     }

@@ -1,15 +1,13 @@
 use crate::watcher::event_thread::WatcherEventThread;
 use crate::watcher::symlinks::{BundleSymlinkedPath, WatchResults};
 use clack_host::bundle::*;
-use notify_debouncer_full::notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify_debouncer_full::notify::{RecommendedWatcher, Watcher};
 use notify_debouncer_full::{new_debouncer, Debouncer, FileIdMap};
-use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 // TODO: bikeshed
 mod event_thread;
-mod inner;
 mod symlinks;
 
 // TODO: bikeshed

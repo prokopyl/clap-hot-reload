@@ -1,12 +1,90 @@
 use crate::util::load_if_different_bundle;
 use crate::watcher::symlinks::BundleSymlinkedPath;
+use blake3::{Hash, Hasher};
 use clack_host::prelude::PluginBundle;
+use clack_plugin::prelude::EntryDescriptor;
 use notify_debouncer_full::notify::Error;
 use notify_debouncer_full::{DebounceEventHandler, DebounceEventResult, DebouncedEvent};
+use std::fs::File;
+use std::io;
+use std::io::{BufReader, Write};
+use std::path::Path;
+use tempfile::NamedTempFile;
+
+struct PluginBundleFile {
+    bundle: PluginBundle,
+    file_hash: Option<Hash>,
+    temp_file: Option<NamedTempFile>,
+}
+
+impl PluginBundleFile {
+    pub fn new_fileless(bundle: PluginBundle) -> Self {
+        Self {
+            bundle,
+            file_hash: None,
+            temp_file: None,
+        }
+    }
+
+    pub fn new_compare_to_hash(
+        path: &Path,
+        current_hash: Option<Hash>,
+        current_entry: &EntryDescriptor,
+    ) -> io::Result<Option<Self>> {
+        // First compare hashes, skip if hashes are identical, or if compute failed for some reason.
+        let file_hash = match compute_hash(path) {
+            Ok(h) => {
+                if let Some(hash) = current_hash {
+                    if hash == h {
+                        return Ok(None);
+                    }
+                }
+
+                Some(h)
+            }
+            Err(e) => {
+                eprintln!("Failed to compute hash for {path:?}: {e}");
+                None
+            }
+        };
+
+        // Now copy to a tempfile
+        let tempfile = create_tempfile_copy(path)?;
+
+        let bundle = match load_if_different_bundle(current_entry, tempfile.path()) {
+            Ok(Some(bundle)) => bundle,
+            Ok(None) => {
+                println!("File changed but points to same bundle, not reloading plugins.");
+                return Ok(None);
+            }
+            Err(e) => {
+                eprintln!("Failed to hot-load new bundle : {e}");
+                return Err(io::Error::other(e));
+            }
+        };
+
+        Ok(Some(Self {
+            bundle,
+            file_hash,
+            temp_file: Some(tempfile),
+        }))
+    }
+}
+
+impl Drop for PluginBundleFile {
+    fn drop(&mut self) {
+        if let Some(file) = self.temp_file.take() {
+            let path = file.path().to_path_buf();
+            if let Err(e) = file.close() {
+                eprintln!("Failed to remove temp file {path:?}: {e}")
+            }
+        }
+    }
+}
 
 pub struct WatcherEventThread {
     bundle_path: BundleSymlinkedPath,
-    current_bundle: PluginBundle,
+    current_bundle: PluginBundleFile,
 }
 
 impl DebounceEventHandler for WatcherEventThread {
@@ -23,7 +101,7 @@ impl WatcherEventThread {
         println!("New event thread reload started");
         Self {
             bundle_path,
-            current_bundle: initial_bundle,
+            current_bundle: PluginBundleFile::new_fileless(initial_bundle),
         }
     }
 
@@ -50,10 +128,15 @@ impl WatcherEventThread {
 
         println!("File changed! : {updates:?}");
 
-        let final_file = self.bundle_path.iter().last().unwrap().path();
+        let bundle_file = self.bundle_path.path();
 
-        let new_bundle = match load_if_different_bundle(self.current_bundle.raw_entry(), final_file)
-        {
+        let new_bundle = PluginBundleFile::new_compare_to_hash(
+            bundle_file,
+            self.current_bundle.file_hash,
+            self.current_bundle.bundle.raw_entry(),
+        );
+
+        let new_bundle = match new_bundle {
             Ok(Some(bundle)) => bundle,
             Ok(None) => {
                 println!("File changed but points to same bundle, not reloading plugins.");
@@ -65,7 +148,32 @@ impl WatcherEventThread {
             }
         };
 
-        println!("New bundle found.  CLAP version: {}", new_bundle.version());
+        println!(
+            "New bundle found.  CLAP version: {}",
+            new_bundle.bundle.version()
+        );
         self.current_bundle = new_bundle;
     }
+}
+
+fn compute_hash(path: &Path) -> io::Result<Hash> {
+    const BUFFER_SIZE: usize = 1024 * 1024; // 1MiB buffer
+
+    let file = File::open(path)?;
+    let reader = BufReader::with_capacity(BUFFER_SIZE, file);
+
+    let mut hasher = Hasher::new();
+    hasher.update_reader(reader)?;
+    Ok(hasher.finalize())
+}
+
+// TODO: more resilient errors
+fn create_tempfile_copy(path: &Path) -> io::Result<NamedTempFile> {
+    let mut file = File::open(path)?;
+    let mut temp_file = NamedTempFile::new()?;
+
+    std::io::copy(&mut file, temp_file.as_file_mut())?;
+    temp_file.as_file_mut().flush()?;
+
+    Ok(temp_file)
 }

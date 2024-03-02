@@ -11,7 +11,7 @@ mod audio_processor;
 use audio_processor::*;
 
 mod extensions;
-use crate::watcher::WatcherHandle;
+use crate::watcher::BundleReceiver;
 use extensions::*;
 
 // TODO: better conversion
@@ -163,19 +163,13 @@ impl Plugin for WrapperPlugin {
 pub struct WrapperPluginShared<'a> {
     host: HostHandle<'a>,
     plugin_handle: PluginInstanceHandle<WrapperHost>,
-    watcher_handle: WatcherHandle<'a>,
 }
 
 impl<'a> WrapperPluginShared<'a> {
-    pub fn new(
-        host: HostHandle<'a>,
-        plugin_handle: PluginInstanceHandle<WrapperHost>,
-        watcher_handle: WatcherHandle<'a>,
-    ) -> Self {
+    pub fn new(host: HostHandle<'a>, plugin_handle: PluginInstanceHandle<WrapperHost>) -> Self {
         Self {
             host,
             plugin_handle,
-            watcher_handle,
         }
     }
 }
@@ -186,6 +180,7 @@ pub struct WrapperPluginMainThread<'a> {
     host: HostMainThreadHandle<'a>,
     shared: &'a WrapperPluginShared<'a>,
     plugin_instance: PluginInstance<WrapperHost>,
+    bundle_receiver: Option<BundleReceiver>,
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
@@ -203,11 +198,13 @@ impl<'a> WrapperPluginMainThread<'a> {
         host: HostMainThreadHandle<'a>,
         shared: &'a WrapperPluginShared<'a>,
         plugin_instance: PluginInstance<WrapperHost>,
+        bundle_receiver: Option<BundleReceiver>,
     ) -> Result<Self, PluginError> {
         Ok(Self {
             host,
             shared,
             plugin_instance,
+            bundle_receiver,
         })
     }
 }

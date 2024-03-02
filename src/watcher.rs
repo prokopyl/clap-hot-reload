@@ -11,19 +11,25 @@ mod event_thread;
 mod symlinks;
 
 // TODO: bikeshed
+mod fanout;
+pub use fanout::*;
+
+// TODO: bikeshed
 pub struct WatcherMaster {
-    initial_bundle: PluginBundle,
-    notifier: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
+    notifier: Debouncer<RecommendedWatcher, FileIdMap>,
+    factory: BundleReceiverFactory,
 }
 
 impl WatcherMaster {
-    pub fn new(initial_bundle: PluginBundle, bundle_path: &Path) -> Self {
+    pub fn new(initial_bundle: PluginBundle, bundle_path: &Path) -> Option<Self> {
         let mut path = BundleSymlinkedPath::get_info(bundle_path.to_path_buf());
+
+        let (producer, factory) = new_bundle_fanout(initial_bundle.clone());
 
         let notifier = new_debouncer(
             Duration::from_millis(750),
             None,
-            WatcherEventThread::new(path.clone(), initial_bundle.clone()),
+            WatcherEventThread::new(path.clone(), initial_bundle, producer),
         );
 
         let notifier = match notifier {
@@ -32,43 +38,18 @@ impl WatcherMaster {
                 path.watch_all(w.watcher(), &mut results);
                 results.log_errors();
 
-                results.has_any_success().then_some(w)
+                results.has_any_success().then_some(w)?
             }
             Err(e) => {
                 eprintln!("[CLAP PLUGIN HOT RELOADER] Failed to start file watcher: {e}");
-                None
+                return None;
             }
         };
 
-        Self {
-            initial_bundle,
-            notifier,
-        }
+        Some(Self { notifier, factory })
     }
 
-    pub fn initial_bundle(&self) -> &PluginBundle {
-        &self.initial_bundle
-    }
-
-    pub fn create_handle<'a>(&self, callback: impl Fn() + Send + Sync + 'a) -> WatcherHandle<'a> {
-        WatcherHandle {
-            current_bundle: self.initial_bundle.clone(),
-            callback: Box::new(callback),
-        }
-    }
-}
-
-pub struct WatcherHandle<'a> {
-    current_bundle: PluginBundle,
-    callback: Box<dyn Fn() + Send + Sync + 'a>,
-}
-
-impl<'a> WatcherHandle<'a> {
-    pub fn current_bundle(&self) -> &PluginBundle {
-        &self.current_bundle
-    }
-
-    pub fn check_new_bundle_available(&self) -> Option<&PluginBundle> {
-        todo!()
+    pub fn new_receiver(&self) -> BundleReceiver {
+        self.factory.new_receiver()
     }
 }

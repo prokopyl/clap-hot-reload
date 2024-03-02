@@ -29,7 +29,7 @@ macro_rules! export_reloadable_clap_entry {
                 #[allow(unsafe_code)]
                 #[allow(warnings, unused)]
                 #[no_mangle]
-                pub static __clack_hotreload_foo: u32 = 426900;
+                pub static __clack_hotreload_foo: u32 = 42690;
 
                 |p| $crate::_macro_utils::HotReloaderEntry::new(p, &__clack_hotreload_wrapped_entry)
             })

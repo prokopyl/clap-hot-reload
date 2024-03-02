@@ -1,5 +1,6 @@
 use crate::util::load_if_different_bundle;
 use crate::watcher::symlinks::BundleSymlinkedPath;
+use crate::watcher::BundleProducer;
 use blake3::{Hash, Hasher};
 use clack_host::prelude::PluginBundle;
 use clack_plugin::prelude::EntryDescriptor;
@@ -85,6 +86,7 @@ impl Drop for PluginBundleFile {
 pub struct WatcherEventThread {
     bundle_path: BundleSymlinkedPath,
     current_bundle: PluginBundleFile,
+    producer: BundleProducer,
 }
 
 impl DebounceEventHandler for WatcherEventThread {
@@ -97,11 +99,16 @@ impl DebounceEventHandler for WatcherEventThread {
 }
 
 impl WatcherEventThread {
-    pub fn new(bundle_path: BundleSymlinkedPath, initial_bundle: PluginBundle) -> Self {
+    pub fn new(
+        bundle_path: BundleSymlinkedPath,
+        initial_bundle: PluginBundle,
+        producer: BundleProducer,
+    ) -> Self {
         println!("New event thread reload started");
         Self {
             bundle_path,
             current_bundle: PluginBundleFile::new_fileless(initial_bundle),
+            producer,
         }
     }
 
@@ -153,6 +160,7 @@ impl WatcherEventThread {
             new_bundle.bundle.version()
         );
         self.current_bundle = new_bundle;
+        self.producer.produce(&self.current_bundle.bundle);
     }
 }
 

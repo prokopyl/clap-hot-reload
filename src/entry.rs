@@ -3,7 +3,6 @@ use crate::watcher::WatcherMaster;
 use crate::wrapper::{WrapperHost, WrapperPlugin, WrapperPluginMainThread, WrapperPluginShared};
 use clack_host::bundle::PluginBundle;
 use clack_plugin::entry::prelude::*;
-use libloading::Library;
 use std::ffi::{CStr, CString};
 use std::path::Path;
 
@@ -38,24 +37,28 @@ impl HotReloaderEntry {
             });
         }
 
-        let watcher = WatcherMaster::new(initial_bundle, Path::new(bundle_path));
+        let watcher = WatcherMaster::new(initial_bundle.clone(), Path::new(bundle_path));
+
+        let factory = match watcher {
+            None => HotReloaderPluginFactory::new_non_reloading(initial_bundle),
+            Some(w) => HotReloaderPluginFactory::new(w, &initial_bundle),
+        };
 
         Ok(Self {
-            plugin_factory: Some(PluginFactoryWrapper::new(HotReloaderPluginFactory::new(
-                watcher,
-            ))),
+            plugin_factory: Some(PluginFactoryWrapper::new(factory)),
         })
     }
 }
 
 struct HotReloaderPluginFactory {
-    watcher: WatcherMaster,
+    watcher: Option<WatcherMaster>,
+    static_bundle: Option<PluginBundle>,
     descriptors: Vec<PluginDescriptor>,
 }
 
 impl HotReloaderPluginFactory {
-    pub fn new(watcher: WatcherMaster) -> Self {
-        let descriptors = if let Some(factory) = watcher.initial_bundle().get_plugin_factory() {
+    pub fn new(watcher: WatcherMaster, initial_bundle: &PluginBundle) -> Self {
+        let descriptors = if let Some(factory) = initial_bundle.get_plugin_factory() {
             factory
                 .plugin_descriptors()
                 .filter_map(clone_plugin_descriptor)
@@ -65,7 +68,25 @@ impl HotReloaderPluginFactory {
         };
 
         Self {
-            watcher,
+            watcher: Some(watcher),
+            static_bundle: None,
+            descriptors,
+        }
+    }
+
+    pub fn new_non_reloading(plugin_bundle: PluginBundle) -> Self {
+        let descriptors = if let Some(factory) = plugin_bundle.get_plugin_factory() {
+            factory
+                .plugin_descriptors()
+                .filter_map(clone_plugin_descriptor)
+                .collect()
+        } else {
+            vec![]
+        };
+
+        Self {
+            watcher: None,
+            static_bundle: Some(plugin_bundle),
             descriptors,
         }
     }
@@ -94,20 +115,20 @@ impl PluginFactory for HotReloaderPluginFactory {
                 host_info,
                 matching_descriptor,
                 move |host| {
-                    let shared_host = host.shared();
-                    let watcher_handle = self
-                        .watcher
-                        .create_handle(move || shared_host.request_callback());
+                    let bundle_receiver = self.watcher.as_ref().map(|w| w.new_receiver());
 
-                    let instance = WrapperHost::new_instance(
-                        host,
-                        watcher_handle.current_bundle(),
-                        &plugin_id,
-                    );
+                    let bundle = match &bundle_receiver {
+                        None => self.static_bundle.as_ref().unwrap(), // PANIC: either static_bundle or watcher is always set.
+                        Some(r) => r.current_bundle(),
+                    };
+
+                    let instance = WrapperHost::new_instance(host, bundle, &plugin_id);
 
                     Ok((
-                        WrapperPluginShared::new(shared_host, instance.handle(), watcher_handle),
-                        move |shared| WrapperPluginMainThread::new(host, shared, instance),
+                        WrapperPluginShared::new(host.shared(), instance.handle()),
+                        move |shared| {
+                            WrapperPluginMainThread::new(host, shared, instance, bundle_receiver)
+                        },
                     ))
                 },
             ),

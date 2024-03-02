@@ -10,6 +10,7 @@ mod audio_ports;
 mod note_ports;
 mod params;
 mod state;
+mod timer;
 
 pub struct ParentHostExtensions<'a> {
     handle: HostHandle<'a>, // TODO: naming consistency with plugin side

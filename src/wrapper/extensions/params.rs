@@ -99,10 +99,10 @@ impl<'a> PluginAudioProcessorParams for WrapperPluginAudioProcessor<'a> {
         input_parameter_changes: &InputEvents,
         output_parameter_changes: &mut OutputEvents,
     ) {
-        let host = self.audio_processor.audio_processor_host_data_mut();
+        let host = self.current_audio_processor.audio_processor_host_data_mut();
 
         let Some(params) = host.shared.wrapped_plugin().params else {
-            todo!()
+            return;
         };
 
         // FIXME: parameter name inconsistency between flush_active and this flush's params

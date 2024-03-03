@@ -11,6 +11,7 @@ mod note_ports;
 mod params;
 mod state;
 mod timer;
+pub use timer::*;
 
 pub struct ParentHostExtensions<'a> {
     handle: HostHandle<'a>, // TODO: naming consistency with plugin side
@@ -61,20 +62,39 @@ impl<'a> WrappedPluginExtensions<'a> {
         &self.handle
     }
 
+    pub fn report(&self) -> ReportedExtensions {
+        ReportedExtensions {
+            audio_ports: self.audio_ports.is_some(),
+            note_ports: self.note_ports.is_some(),
+            params: self.params.is_some(),
+            state: self.state.is_some(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ReportedExtensions {
+    audio_ports: bool,
+    note_ports: bool,
+    params: bool,
+    state: bool,
+}
+
+impl ReportedExtensions {
     pub fn declare_to_host(&self, builder: &mut PluginExtensions<WrapperPlugin>) {
-        if self.audio_ports.is_some() {
+        if self.audio_ports {
             builder.register::<PluginAudioPorts>();
         }
 
-        if self.note_ports.is_some() {
+        if self.note_ports {
             builder.register::<PluginNotePorts>();
         }
 
-        if self.params.is_some() {
+        if self.params {
             builder.register::<PluginParams>();
         }
 
-        if self.state.is_some() {
+        if self.state {
             builder.register::<PluginState>();
         }
     }

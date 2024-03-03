@@ -7,7 +7,8 @@ use clack_plugin::prelude::{Audio, Events, Process};
 pub struct WrapperPluginAudioProcessor<'a> {
     host: HostAudioThreadHandle<'a>,
     shared: &'a WrapperPluginShared<'a>,
-    pub(crate) audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
+    pub(crate) current_audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
+    channel: AudioProcessorChannel,
 }
 
 impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThread<'a>>
@@ -19,34 +20,22 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         shared: &'a WrapperPluginShared<'a>,
         audio_config: AudioConfiguration,
     ) -> Result<Self, PluginError> {
-        // This is a really ugly hack, due to the fact that plugin instances are essentially 'static
-        // for now. This is fixed in the plugin-instance-sublifetimes branch of clack but is blocked
-        // on a borrow checker limitation bug:
-        // https://internals.rust-lang.org/t/is-due-to-current-limitations-in-the-borrow-checker-overzealous/17818
-        let host: HostAudioThreadHandle<'static> = unsafe { core::mem::transmute(host) };
+        main_thread.timers.init(&mut main_thread.host); // Do it now I guess... (TODO: fixme)
 
-        // TODO: why are the audio configs different...
-        // TODO: unwrap
-        let audio_processor = main_thread
-            .plugin_instance
-            .activate(
-                |plugin, shared, _| WrapperHostAudioProcessor {
-                    parent: host,
-                    shared,
-                    plugin,
-                },
-                PluginAudioConfiguration {
-                    frames_count_range: audio_config.min_sample_count
-                        ..=audio_config.max_sample_count,
-                    sample_rate: audio_config.sample_rate,
-                },
-            )
-            .unwrap();
+        // FIXME: Host should very much NOT be Copy or Clone
+        let audio_processor =
+            WrapperHost::activate_instance(&mut main_thread.plugin_instance, audio_config);
+
+        // TODO: handle possible leftover channel
+        let (main_thread_channel, audio_processor_channel) = MainThreadChannel::new_pair();
+        main_thread.audio_processor_channel = Some(main_thread_channel);
+        main_thread.current_audio_config = Some(audio_config);
 
         Ok(Self {
             host,
             shared,
-            audio_processor: audio_processor.into(),
+            current_audio_processor: audio_processor.into(),
+            channel: audio_processor_channel,
         })
     }
 
@@ -58,7 +47,17 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     ) -> Result<ProcessStatus, PluginError> {
         let (audio_inputs, mut audio_outputs) = AudioPorts::from_plugin_audio_mut(&mut audio);
 
-        self.audio_processor
+        // Hot swap!
+        // TODO: recover note events
+        if let Some(new_processor) = self.channel.check_for_new_processor() {
+            println!("Audio processor received new update. Hot-swapping.");
+            let old_processor =
+                core::mem::replace(&mut self.current_audio_processor, new_processor.into());
+
+            self.channel.send_for_disposal(old_processor.into_stopped());
+        }
+
+        self.current_audio_processor
             .ensure_processing_started()
             .map_err(|_| PluginError::Message("Not started"))?
             .process(
@@ -76,7 +75,10 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     fn deactivate(self, main_thread: &mut WrapperPluginMainThread<'a>) {
         main_thread
             .plugin_instance
-            .deactivate(self.audio_processor.into_stopped());
+            .deactivate(self.current_audio_processor.into_stopped());
+
+        // TODO: handle leftovers
+        main_thread.audio_processor_channel = None;
     }
 
     fn reset(&mut self) {
@@ -85,11 +87,27 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     }
 
     fn start_processing(&mut self) -> Result<(), PluginError> {
-        self.audio_processor.start_processing().unwrap(); // TODO: unwrap
+        if let Some(new_processor) = self.channel.move_to_latest_new_processor() {
+            let new_processor = new_processor.start_processing().unwrap().into();
+            let old_processor =
+                core::mem::replace(&mut self.current_audio_processor, new_processor);
+
+            self.channel.send_for_disposal(old_processor.into_stopped());
+        }
+
+        self.current_audio_processor.start_processing().unwrap(); // TODO: unwrap
         Ok(())
     }
 
     fn stop_processing(&mut self) {
-        self.audio_processor.stop_processing().unwrap(); // TODO: unwrap
+        self.current_audio_processor.stop_processing().unwrap(); // TODO: unwrap
+
+        if let Some(new_processor) = self.channel.move_to_latest_new_processor() {
+            let new_processor = new_processor.into();
+            let old_processor =
+                core::mem::replace(&mut self.current_audio_processor, new_processor);
+
+            self.channel.send_for_disposal(old_processor.into_stopped());
+        }
     }
 }

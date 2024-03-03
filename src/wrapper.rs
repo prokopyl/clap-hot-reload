@@ -1,8 +1,8 @@
-use clack_host::plugin::PluginInstanceHandle;
+use clack_extensions::timer::PluginTimer;
 use clack_host::prelude::*;
 use clack_plugin::prelude::*;
 use clack_plugin::prelude::{HostHandle, HostMainThreadHandle};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
 pub struct WrapperHost;
@@ -13,6 +13,10 @@ use audio_processor::*;
 mod extensions;
 use crate::watcher::BundleReceiver;
 use extensions::*;
+
+mod channel;
+
+use channel::*;
 
 // TODO: better conversion
 fn clone_host_info(parent_host_info: &clack_plugin::host::HostInfo) -> HostInfo {
@@ -53,6 +57,7 @@ impl WrapperHost {
         let host: HostMainThreadHandle<'static> = unsafe { core::mem::transmute(host) };
         let shared = host.shared();
 
+        // FIXME: HostMainThreadHandle should DEFINITELY NOT be copy
         // TODO: unwrap
         let instance = PluginInstance::<WrapperHost>::new(
             |_| WrapperHostShared::<'_>::new(shared),
@@ -65,6 +70,26 @@ impl WrapperHost {
 
         instance
     }
+
+    pub fn activate_instance(
+        plugin_instance: &mut PluginInstance<WrapperHost>,
+        audio_config: AudioConfiguration,
+    ) -> StoppedPluginAudioProcessor<WrapperHost> {
+        // TODO: why are the audio configs different...
+        // TODO: unwrap
+        let audio_processor = plugin_instance
+            .activate(
+                |plugin, shared, _| WrapperHostAudioProcessor { shared, plugin },
+                PluginAudioConfiguration {
+                    frames_count_range: audio_config.min_sample_count
+                        ..=audio_config.max_sample_count,
+                    sample_rate: audio_config.sample_rate,
+                },
+            )
+            .unwrap();
+
+        audio_processor
+    }
 }
 
 impl Host for WrapperHost {
@@ -73,7 +98,7 @@ impl Host for WrapperHost {
     type AudioProcessor<'a> = WrapperHostAudioProcessor<'a>;
 
     fn declare_extensions(builder: &mut HostExtensions<Self>, shared: &Self::Shared<'_>) {
-        shared.parent.declare_to_plugin(builder)
+        shared.parent.declare_to_plugin(builder);
     }
 }
 
@@ -138,7 +163,7 @@ impl<'a> HostMainThread<'a> for WrapperHostMainThread<'a> {
 pub struct WrapperHostAudioProcessor<'a> {
     shared: &'a WrapperHostShared<'a>,
     plugin: PluginAudioProcessorHandle<'a>,
-    parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
+    // parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
 }
 
 impl<'a> HostAudioProcessor<'a> for WrapperHostAudioProcessor<'a> {}
@@ -151,25 +176,24 @@ impl Plugin for WrapperPlugin {
     type MainThread<'a> = WrapperPluginMainThread<'a>;
 
     fn declare_extensions(builder: &mut PluginExtensions<Self>, shared: &Self::Shared<'_>) {
-        // TODO: this locks a lot
-        shared
-            .plugin_handle
-            // FIXME: unwrap
-            .use_shared_host_data(|shared| shared.plugin.get().unwrap().declare_to_host(builder))
-            .unwrap();
+        builder.register::<PluginTimer>();
+
+        shared.reported_extensions.declare_to_host(builder);
     }
 }
 
 pub struct WrapperPluginShared<'a> {
     host: HostHandle<'a>,
-    plugin_handle: PluginInstanceHandle<WrapperHost>,
+    reported_extensions: ReportedExtensions,
 }
 
 impl<'a> WrapperPluginShared<'a> {
-    pub fn new(host: HostHandle<'a>, plugin_handle: PluginInstanceHandle<WrapperHost>) -> Self {
+    pub fn new(host: HostHandle<'a>, plugin_handle: &PluginInstance<WrapperHost>) -> Self {
+        let reported_extensions = plugin_handle.shared_host_data().wrapped_plugin().report();
+
         Self {
             host,
-            plugin_handle,
+            reported_extensions,
         }
     }
 }
@@ -181,13 +205,23 @@ pub struct WrapperPluginMainThread<'a> {
     shared: &'a WrapperPluginShared<'a>,
     plugin_instance: PluginInstance<WrapperHost>,
     bundle_receiver: Option<BundleReceiver>,
+    pub timers: WrapperTimerHandler,
+    audio_processor_channel: Option<MainThreadChannel>,
+    plugin_id: CString,
+    current_audio_config: Option<AudioConfiguration>,
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
     fn on_main_thread(&mut self) {
+        //self.timers.init(&mut self.host);
+
         /* if let Some(new_bundle) = self.shared.watcher_handle.check_new_bundle_available() {
             todo!()
         } */
+
+        if let Some(channel) = &mut self.audio_processor_channel {
+            channel.destroy_awaiting()
+        }
 
         self.plugin_instance.call_on_main_thread_callback()
     }
@@ -199,12 +233,46 @@ impl<'a> WrapperPluginMainThread<'a> {
         shared: &'a WrapperPluginShared<'a>,
         plugin_instance: PluginInstance<WrapperHost>,
         bundle_receiver: Option<BundleReceiver>,
+        plugin_id: CString,
     ) -> Result<Self, PluginError> {
+        // host.shared().request_callback(); // To finish configuring timers. TODO: Bitwig bug?
         Ok(Self {
             host,
             shared,
             plugin_instance,
             bundle_receiver,
+            plugin_id,
+
+            timers: WrapperTimerHandler::new(),
+            audio_processor_channel: None,
+            current_audio_config: None,
         })
+    }
+
+    fn check_for_new_bundles(&mut self) {
+        let Some(receiver) = self.bundle_receiver.as_mut() else {
+            return;
+        };
+
+        if !receiver.receive_new_bundle() {
+            return;
+        }
+
+        println!("Received new bundle!!");
+
+        let new_instance =
+            WrapperHost::new_instance(self.host, receiver.current_bundle(), &self.plugin_id);
+        let old_instance = core::mem::replace(&mut self.plugin_instance, new_instance);
+
+        // This means the wrapper plugin is activated, and possibly processing audio.
+        if let (Some(channel), Some(config)) =
+            (&mut self.audio_processor_channel, self.current_audio_config)
+        {
+            let audio_processor = WrapperHost::activate_instance(&mut self.plugin_instance, config);
+
+            // TODO: handle errors
+            let _ = channel.send_new_audio_processor(audio_processor, old_instance);
+        }
+        // Just drop old_instance if it wasn't activated.
     }
 }

@@ -106,7 +106,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
 
         // We use the `EventBatcher` to handle incoming events in a sample-accurate way.
         for event_batch in events.input.batch() {
-            // Handle all of the events (note or param) for this batch.
+            // Handle all the events (note or param) for this batch.
             for event in event_batch.events() {
                 self.poly_osc.handle_event(event);
                 self.shared.params.handle_event(event);
@@ -115,7 +115,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
             // Received the updated volume parameter
             let volume = self.shared.params.get_volume();
 
-            // With all of the events out of the way, we can now handle a whole batch of sample
+            // With all the events out of the way, we can now handle a whole batch of sample
             // all at once.
             let output_buffer = &mut output_buffer[event_batch.sample_bounds()];
             self.poly_osc.generate_next_samples(output_buffer, volume);
@@ -127,7 +127,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
             // PANIC: we just checked that channel_count is > 1.
             let first_channel = first_channel.channel(0).unwrap();
 
-            // Copy the first channel into all of the other channels.
+            // Copy the first channel into all the other channels.
             for other_channel in other_channels {
                 other_channel.copy_from_slice(first_channel)
             }
@@ -143,7 +143,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
     }
 
     fn stop_processing(&mut self) {
-        // When audio processing stops, we stop all of the oscillator voices just in case.
+        // When audio processing stops, we stop all the oscillator voices just in case.
         self.poly_osc.stop_all();
     }
 }

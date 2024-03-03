@@ -39,7 +39,6 @@ impl<'a> ParentHostExtensions<'a> {
 }
 
 pub struct WrappedPluginExtensions<'a> {
-    handle: PluginSharedHandle<'a>,
     audio_ports: Option<&'a PluginAudioPorts>,
     note_ports: Option<&'a PluginNotePorts>,
     params: Option<&'a PluginParams>,
@@ -53,13 +52,7 @@ impl<'a> WrappedPluginExtensions<'a> {
             note_ports: handle.get_extension(),
             params: handle.get_extension(),
             state: handle.get_extension(),
-            handle,
         }
-    }
-
-    #[inline]
-    pub fn handle(&self) -> &PluginSharedHandle<'a> {
-        &self.handle
     }
 
     pub fn report(&self) -> ReportedExtensions {

@@ -20,7 +20,7 @@ use channel::*;
 
 // TODO: better conversion
 fn clone_host_info(parent_host_info: &clack_plugin::host::HostInfo) -> HostInfo {
-    // TODO: all of the unwraps omg
+    // TODO: all the unwraps omg
     HostInfo::new(
         parent_host_info
             .name()

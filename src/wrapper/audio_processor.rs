@@ -12,7 +12,7 @@ mod output_buffers;
 
 use output_buffers::*;
 
-const CROSSFADE_TIME: f32 = 2.0; // TODO: make this shorter, this is just for testing
+const CROSSFADE_TIME: f64 = 0.25;
 
 pub struct WrapperPluginAudioProcessor<'a> {
     host: HostAudioThreadHandle<'a>,
@@ -52,6 +52,8 @@ impl<'a> WrapperPluginAudioProcessor<'a> {
             self.input_event_buffer.sort();
 
             println!("Note buffer : {:?}", &self.input_event_buffer);
+
+            self.cross_fader.reset(); // Prepare for cross-fading
             true
         } else {
             false
@@ -88,7 +90,10 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
             input_event_buffer: EventBuffer::with_capacity(64),
             note_tracker: NoteTracker::new(),
             cross_fader: CrossFader::new(audio_config.sample_rate, CROSSFADE_TIME),
-            output_buffers: OutputBuffers::new_from_config(&main_thread.audio_ports_info),
+            output_buffers: OutputBuffers::new_from_config(
+                &main_thread.audio_ports_info,
+                audio_config,
+            ),
         })
     }
 
@@ -107,14 +112,14 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
             self.swap_if_needed(&events)
         };
 
-        // let in_events = buf.as_slice(); // TODO: add impl for Vec so it doesn't have to go through &slice.
-        let in_events = self.input_event_buffer.as_input();
-        let in_events = if swapped { &in_events } else { events.input };
-
         let status = if let Some(fade_out_audio_processor) = &mut self.fade_out_audio_processor {
             let audio_inputs = InputAudioBuffers::from_plugin_audio(&audio);
 
             let mut audio_outputs = self.output_buffers.output_buffers_for(true);
+
+            // let in_events = buf.as_slice(); // TODO: add impl for Vec so it doesn't have to go through &slice.
+            let in_events = self.input_event_buffer.as_input();
+            let in_events = if swapped { &in_events } else { events.input };
 
             let main_status = self
                 .current_audio_processor
@@ -139,7 +144,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                 .process(
                     &audio_inputs,
                     &mut audio_outputs,
-                    in_events,
+                    events.input,
                     &mut OutputEvents::void(), // Ignore all output events from the instance being faded out
                     process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
                     None,
@@ -148,7 +153,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                 .map_err(|_| PluginError::OperationFailed)?;
 
             self.output_buffers
-                .output_crossfade(&mut self.cross_fader, &mut audio);
+                .output_crossfade(&mut self.cross_fader, &mut audio)?;
 
             if self.cross_fader.is_done() {
                 // PANIC: we just checked above if the audio processor was there
@@ -170,7 +175,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                 .process(
                     &audio_inputs,
                     &mut audio_outputs,
-                    in_events,
+                    events.input,
                     events.output,
                     process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
                     None,

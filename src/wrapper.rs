@@ -209,6 +209,7 @@ pub struct WrapperPluginMainThread<'a> {
     audio_processor_channel: Option<MainThreadChannel>,
     plugin_id: CString,
     current_audio_config: Option<AudioConfiguration>,
+    audio_ports_info: PluginAudioPortsInfo,
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
@@ -231,12 +232,14 @@ impl<'a> WrapperPluginMainThread<'a> {
     pub fn new(
         host: HostMainThreadHandle<'a>,
         shared: &'a WrapperPluginShared<'a>,
-        plugin_instance: PluginInstance<WrapperHost>,
+        mut plugin_instance: PluginInstance<WrapperHost>,
         bundle_receiver: Option<BundleReceiver>,
         plugin_id: CString,
     ) -> Result<Self, PluginError> {
         // host.shared().request_callback(); // To finish configuring timers. TODO: Bitwig bug?
         Ok(Self {
+            audio_ports_info: PluginAudioPortsInfo::new(&mut plugin_instance),
+
             host,
             shared,
             plugin_instance,

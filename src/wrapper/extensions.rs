@@ -7,6 +7,8 @@ use clack_host::prelude::*;
 use clack_plugin::prelude::*;
 
 mod audio_ports;
+pub use audio_ports::*;
+
 mod note_ports;
 mod params;
 mod state;

@@ -169,6 +169,7 @@ fn clone_plugin_descriptor(
     )
 }
 
+#[allow(unsafe_code)]
 fn load_initial_bundle(
     initial_entry: &'static EntryDescriptor,
     self_path: &str,

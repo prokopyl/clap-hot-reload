@@ -5,12 +5,17 @@ use libloading::Library;
 use std::ffi::CStr;
 use std::path::Path;
 
-const WRAPPED_ENTRY_SYMBOL_NAME: &CStr =
-    unsafe { CStr::from_bytes_with_nul_unchecked(b"__clack_hotreload_wrapped_entry\0") };
+const fn cstr(bytes: &'static [u8]) -> &'static CStr {
+    match CStr::from_bytes_with_nul(bytes) {
+        Ok(str) => str,
+        Err(_) => panic!(""),
+    }
+}
 
-const FOO_SYMBOL_NAME: &CStr =
-    unsafe { CStr::from_bytes_with_nul_unchecked(b"__clack_hotreload_foo\0") };
+const WRAPPED_ENTRY_SYMBOL_NAME: &CStr = cstr(b"__clack_hotreload_wrapped_entry\0");
+const FOO_SYMBOL_NAME: &CStr = cstr(b"__clack_hotreload_foo\0");
 
+#[allow(unsafe_code)]
 pub fn load_if_different_bundle(
     initial_entry: &EntryDescriptor,
     self_path: &Path,

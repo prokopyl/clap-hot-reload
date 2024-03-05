@@ -20,23 +20,22 @@ impl PluginAudioPortsInfo {
     }
 
     pub fn update(&mut self, plugin: &mut PluginInstance<WrapperHost>) {
-        // FIXME: Erf
-        let extensions: &'static WrappedPluginExtensions =
-            unsafe { &*(plugin.shared_host_data().wrapped_plugin() as *const _ as *const _) };
-        let mut plugin = plugin.main_thread_plugin_data();
-        self.output_channels_count_per_port.clear();
-
-        let Some(audio_ports) = extensions.audio_ports else {
+        // FIXME: Erf still
+        let host = plugin.main_thread_host_data_mut();
+        let Some(audio_ports) = host.shared.wrapped_plugin().audio_ports else {
             // Use default, single port stereo config
             self.output_channels_count_per_port.push(2);
             return;
         };
 
-        let output_port_count = audio_ports.count(&mut plugin, false);
+        let plugin = host.plugin.as_mut().unwrap();
+        self.output_channels_count_per_port.clear();
+
+        let output_port_count = audio_ports.count(plugin, false);
 
         let mut buf = AudioPortInfoBuffer::new();
         for i in 0..output_port_count {
-            let Some(data) = audio_ports.get(&mut plugin, i, false, &mut buf) else {
+            let Some(data) = audio_ports.get(plugin, i, false, &mut buf) else {
                 continue;
             };
 

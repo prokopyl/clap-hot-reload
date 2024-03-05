@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 use crate::params::PolySynthParams;
 use crate::poly_oscillator::PolyOscillator;
 use clack_extensions::state::PluginState;

@@ -1,4 +1,4 @@
-extern crate core;
+// #![deny(unsafe_code)] TODO
 
 mod entry;
 mod util;

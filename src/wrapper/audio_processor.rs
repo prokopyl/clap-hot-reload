@@ -42,15 +42,6 @@ impl<'a> WrapperPluginAudioProcessor<'a> {
             self.note_tracker
                 .recover_all_current_notes(&mut self.input_event_buffer);
 
-            // TODO: erf
-            for e in events.input {
-                let e: &UnknownEvent<'static> =
-                    unsafe { &*(e as *const UnknownEvent<'_> as *const UnknownEvent<'static>) };
-                self.input_event_buffer.push(e)
-            }
-
-            self.input_event_buffer.sort();
-
             println!("Note buffer : {:?}", &self.input_event_buffer);
 
             self.cross_fader.reset(); // Prepare for cross-fading
@@ -117,9 +108,16 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
             let mut audio_outputs = self.output_buffers.output_buffers_for(true);
 
-            // let in_events = buf.as_slice(); // TODO: add impl for Vec so it doesn't have to go through &slice.
-            let in_events = self.input_event_buffer.as_input();
-            let in_events = if swapped { &in_events } else { events.input };
+            let combined;
+            let in_events;
+
+            let in_events = if swapped {
+                combined = (&self.input_event_buffer, events.input);
+                in_events = InputEvents::from_buffer(&combined);
+                &in_events
+            } else {
+                events.input
+            };
 
             let main_status = self
                 .current_audio_processor

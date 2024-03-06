@@ -105,7 +105,7 @@ impl<'a> PluginStateImpl for PolySynthPluginMainThread<'a> {
 
 impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     fn count(&mut self) -> u32 {
-        1
+        2
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -114,7 +114,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
                 id: 1.into(),
                 flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
                 cookie: Default::default(),
-                name: b"Volume",
+                name: b"Volume!",
                 module: b"",
                 min_value: 0.0,
                 max_value: 1.0,
@@ -123,7 +123,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
         } else if param_index == 1 {
             info.set(&ParamInfo {
                 id: 2.into(),
-                flags: ParamInfoFlags::IS_AUTOMATABLE,
+                flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
                 cookie: Default::default(),
                 name: b"Foo param!",
                 module: b"",
@@ -135,10 +135,10 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     }
 
     fn get_value(&mut self, param_id: u32) -> Option<f64> {
-        if param_id == 1 {
-            Some(self.shared.params.get_volume() as f64)
-        } else {
-            None
+        match param_id {
+            1 => Some(self.shared.params.get_volume() as f64),
+            2 => Some(0.0),
+            _ => None,
         }
     }
 
@@ -148,10 +148,10 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
         value: f64,
         writer: &mut ParamDisplayWriter,
     ) -> std::fmt::Result {
-        if param_id == 1 {
-            write!(writer, "{0:.2} %", value * 100.0)
-        } else {
-            Err(std::fmt::Error)
+        match param_id {
+            1 => write!(writer, "{0:.2} %", value * 100.0),
+            2 => write!(writer, "{} foo!", if value < 0.5 { "Nah" } else { "Yes" }),
+            _ => Err(std::fmt::Error),
         }
     }
 

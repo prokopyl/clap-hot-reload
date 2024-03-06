@@ -18,37 +18,13 @@ mod channel;
 
 use channel::*;
 
-// TODO: better conversion
-fn clone_host_info(parent_host_info: &clack_plugin::host::HostInfo) -> HostInfo {
-    // TODO: all the unwraps omg
-    HostInfo::new(
-        parent_host_info
-            .name()
-            .map(|s| s.to_str().unwrap())
-            .unwrap_or_default(),
-        parent_host_info
-            .vendor()
-            .map(|s| s.to_str().unwrap())
-            .unwrap_or_default(),
-        parent_host_info
-            .url()
-            .map(|s| s.to_str().unwrap())
-            .unwrap_or_default(),
-        parent_host_info
-            .version()
-            .map(|s| s.to_str().unwrap())
-            .unwrap_or_default(),
-    )
-    .unwrap()
-}
-
 impl WrapperHost {
     pub fn new_instance(
         host: HostMainThreadHandle,
         bundle: &PluginBundle,
         instantiated_plugin_id: &CStr,
     ) -> PluginInstance<Self> {
-        let info = clone_host_info(&host.shared().info());
+        let info = HostInfo::from_plugin(&host.shared().info());
 
         // This is a really ugly hack, due to the fact that plugin instances are essentially 'static
         // for now. This is fixed in the plugin-instance-sublifetimes branch of clack but is blocked
@@ -74,21 +50,15 @@ impl WrapperHost {
     pub fn activate_instance(
         plugin_instance: &mut PluginInstance<WrapperHost>,
         audio_config: AudioConfiguration,
-    ) -> StoppedPluginAudioProcessor<WrapperHost> {
+    ) -> Result<StoppedPluginAudioProcessor<WrapperHost>, HostError> {
         // TODO: why are the audio configs different...
-        // TODO: unwrap
-        let audio_processor = plugin_instance
-            .activate(
-                |plugin, shared, _| WrapperHostAudioProcessor { shared, plugin },
-                PluginAudioConfiguration {
-                    frames_count_range: audio_config.min_sample_count
-                        ..=audio_config.max_sample_count,
-                    sample_rate: audio_config.sample_rate,
-                },
-            )
-            .unwrap();
-
-        audio_processor
+        plugin_instance.activate(
+            |plugin, shared, _| WrapperHostAudioProcessor { shared, plugin },
+            PluginAudioConfiguration {
+                frames_count_range: audio_config.min_sample_count..=audio_config.max_sample_count,
+                sample_rate: audio_config.sample_rate,
+            },
+        )
     }
 }
 
@@ -271,7 +241,9 @@ impl<'a> WrapperPluginMainThread<'a> {
         if let (Some(channel), Some(config)) =
             (&mut self.audio_processor_channel, self.current_audio_config)
         {
-            let audio_processor = WrapperHost::activate_instance(&mut self.plugin_instance, config);
+            // TODO: unwrap
+            let audio_processor =
+                WrapperHost::activate_instance(&mut self.plugin_instance, config).unwrap();
 
             // TODO: handle errors
             let _ = channel.send_new_audio_processor(audio_processor, old_instance);

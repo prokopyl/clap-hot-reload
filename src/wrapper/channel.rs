@@ -9,10 +9,6 @@ pub struct AudioProcessorChannel {
 }
 
 impl AudioProcessorChannel {
-    pub fn check_for_new_processor(&mut self) -> Option<StoppedPluginAudioProcessor<WrapperHost>> {
-        self.receiver.try_recv().ok()
-    }
-
     pub fn move_to_latest_new_processor(
         &mut self,
     ) -> Option<StoppedPluginAudioProcessor<WrapperHost>> {

@@ -16,8 +16,7 @@ pub use fanout::*;
 
 // TODO: bikeshed
 pub struct WatcherMaster {
-    // TODO: use blocking version on Drop
-    _notifier: Debouncer<RecommendedWatcher, FileIdMap>,
+    notifier: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
     factory: BundleReceiverFactory,
 }
 
@@ -48,12 +47,20 @@ impl WatcherMaster {
         };
 
         Some(Self {
-            _notifier: notifier,
+            notifier: Some(notifier),
             factory,
         })
     }
 
     pub fn new_receiver(&self) -> BundleReceiver {
         self.factory.new_receiver()
+    }
+}
+
+impl Drop for WatcherMaster {
+    fn drop(&mut self) {
+        if let Some(notifier) = self.notifier.take() {
+            notifier.stop()
+        }
     }
 }

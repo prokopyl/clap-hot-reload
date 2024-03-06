@@ -27,9 +27,9 @@ pub struct WrapperPluginAudioProcessor<'a> {
 }
 
 impl<'a> WrapperPluginAudioProcessor<'a> {
-    fn swap_if_needed(&mut self, events: &Events) -> bool {
+    fn swap_if_needed(&mut self) -> bool {
         // TODO: properly handle cookies
-        if let Some(new_processor) = self.channel.check_for_new_processor() {
+        if let Some(new_processor) = self.channel.move_to_latest_new_processor() {
             println!("Audio processor received new update. Hot-swapping.");
             let old_processor =
                 core::mem::replace(&mut self.current_audio_processor, new_processor.into());
@@ -37,7 +37,6 @@ impl<'a> WrapperPluginAudioProcessor<'a> {
             self.fade_out_audio_processor = Some(old_processor);
 
             // Recover notes
-            // TODO: handle non-static
             self.input_event_buffer.clear();
             self.note_tracker
                 .recover_all_current_notes(&mut self.input_event_buffer);
@@ -65,11 +64,17 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
         // FIXME: Host should very much NOT be Copy or Clone
         let audio_processor =
-            WrapperHost::activate_instance(&mut main_thread.plugin_instance, audio_config);
+            WrapperHost::activate_instance(&mut main_thread.plugin_instance, audio_config)?;
 
-        // TODO: handle possible leftover channel
         let (main_thread_channel, audio_processor_channel) = MainThreadChannel::new_pair();
-        main_thread.audio_processor_channel = Some(main_thread_channel);
+        // Handle possible leftover channel
+        if let Some(mut previous_channel) = main_thread
+            .audio_processor_channel
+            .replace(main_thread_channel)
+        {
+            previous_channel.destroy_awaiting();
+        }
+
         main_thread.current_audio_config = Some(audio_config);
 
         Ok(Self {
@@ -100,7 +105,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         let swapped = if self.fade_out_audio_processor.is_some() {
             false
         } else {
-            self.swap_if_needed(&events)
+            self.swap_if_needed()
         };
 
         let status = if let Some(fade_out_audio_processor) = &mut self.fade_out_audio_processor {
@@ -128,8 +133,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     &mut audio_outputs,
                     in_events,
                     events.output,
-                    process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
-                    None,
+                    process.steady_time,
                     process.transport,
                 )
                 .map_err(|_| PluginError::OperationFailed)?;
@@ -144,8 +148,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     &mut audio_outputs,
                     events.input,
                     &mut OutputEvents::void(), // Ignore all output events from the instance being faded out
-                    process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
-                    None,
+                    process.steady_time,
                     process.transport,
                 )
                 .map_err(|_| PluginError::OperationFailed)?;
@@ -175,8 +178,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     &mut audio_outputs,
                     events.input,
                     events.output,
-                    process.steady_time.map(|i| i as i64).unwrap_or(-1), // FIXME: i64 consistency stuff
-                    None,
+                    process.steady_time,
                     process.transport,
                 )
                 .map_err(|_| PluginError::OperationFailed)?
@@ -197,26 +199,28 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
     fn reset(&mut self) {
         self.note_tracker.reset();
-        // FIXME: there's no reset on host
-        todo!()
+        self.current_audio_processor.reset();
+        if let Some(fading_out) = &mut self.fade_out_audio_processor {
+            fading_out.reset();
+        }
     }
 
     fn start_processing(&mut self) -> Result<(), PluginError> {
         if let Some(new_processor) = self.channel.move_to_latest_new_processor() {
-            let new_processor = new_processor.start_processing().unwrap().into();
+            let new_processor = new_processor.start_processing()?.into();
             let old_processor =
                 core::mem::replace(&mut self.current_audio_processor, new_processor);
 
             self.channel.send_for_disposal(old_processor.into_stopped());
         }
 
-        self.current_audio_processor.start_processing().unwrap(); // TODO: unwrap
+        self.current_audio_processor.start_processing()?;
         self.note_tracker.reset();
         Ok(())
     }
 
     fn stop_processing(&mut self) {
-        self.current_audio_processor.stop_processing().unwrap(); // TODO: unwrap
+        self.current_audio_processor.ensure_processing_stopped();
         self.note_tracker.reset();
 
         if let Some(new_processor) = self.channel.move_to_latest_new_processor() {

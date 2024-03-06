@@ -105,7 +105,7 @@ impl<'a> PluginStateImpl for PolySynthPluginMainThread<'a> {
 
 impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     fn count(&mut self) -> u32 {
-        2
+        1
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -114,7 +114,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
                 id: 1.into(),
                 flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
                 cookie: Default::default(),
-                name: b"Volume!",
+                name: b"Volume",
                 module: b"",
                 min_value: 0.0,
                 max_value: 1.0,
@@ -150,7 +150,7 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     ) -> std::fmt::Result {
         match param_id {
             1 => write!(writer, "{0:.2} %", value * 100.0),
-            2 => write!(writer, "{} foo!", if value < 0.5 { "Nah" } else { "Yes" }),
+            2 => write!(writer, "{} foo!", if value < 0.5 { "No" } else { "Yes" }),
             _ => Err(std::fmt::Error),
         }
     }

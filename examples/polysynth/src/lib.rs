@@ -1,4 +1,5 @@
 #![deny(unsafe_code)]
+#![allow(unused_mut)]
 
 use crate::params::{PolySynthParamModulations, PolySynthParams};
 use crate::poly_oscillator::PolyOscillator;

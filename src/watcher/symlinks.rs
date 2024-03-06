@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 #[derive(Clone)]
 pub struct BundleSymlinkedPath {
     path: PathBuf,
-    is_symlink: bool,
+    _is_symlink: bool, // TODO
     is_watched: bool,
     is_parent_watched: bool,
     symlink_target: Option<Box<BundleSymlinkedPath>>,
@@ -46,7 +46,7 @@ impl BundleSymlinkedPath {
             path,
             is_watched: false,
             is_parent_watched: false,
-            is_symlink,
+            _is_symlink: is_symlink,
             symlink_target,
         }
     }

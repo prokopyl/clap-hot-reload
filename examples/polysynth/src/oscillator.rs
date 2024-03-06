@@ -55,7 +55,7 @@ impl SquareOscillator {
     ///
     /// The given volume should be in the `0..1` range.
     #[inline]
-    pub fn add_next_samples_to_buffer(&mut self, buf: &mut [f32], mut volume: f32) {
+    pub fn add_next_samples_to_buffer(&mut self, buf: &mut [f32], volume: f32) {
         // volume *= 4.0;
         for value in buf {
             if self.current_phase <= PI {

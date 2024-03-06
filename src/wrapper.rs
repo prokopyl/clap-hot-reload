@@ -158,7 +158,7 @@ impl Plugin for WrapperPlugin {
 }
 
 pub struct WrapperPluginShared<'a> {
-    host: HostHandle<'a>,
+    _host: HostHandle<'a>,
     reported_extensions: ReportedExtensions,
     params: Option<&'a HostParams>,
 }
@@ -168,7 +168,7 @@ impl<'a> WrapperPluginShared<'a> {
         let reported_extensions = plugin_handle.shared_host_data().wrapped_plugin().report();
 
         Self {
-            host,
+            _host: host,
             params: host.extension(),
             reported_extensions,
         }

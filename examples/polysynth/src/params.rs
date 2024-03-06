@@ -60,6 +60,28 @@ impl PolySynthParams {
     }
 }
 
+pub struct PolySynthParamModulations {
+    volume_mod: f32,
+}
+impl PolySynthParamModulations {
+    pub fn new() -> Self {
+        Self { volume_mod: 0.0 }
+    }
+
+    #[inline]
+    pub fn volume(&self) -> f32 {
+        self.volume_mod
+    }
+
+    pub fn handle_event(&mut self, event: &UnknownEvent) {
+        if let Some(CoreEventSpace::ParamMod(event)) = event.as_core_event() {
+            if event.param_id() == 1 {
+                self.volume_mod = event.amount() as f32
+            }
+        }
+    }
+}
+
 /// Implementation of the State extension.
 ///
 /// Our state "serialization" is extremely simple and basic: we only have the value of the

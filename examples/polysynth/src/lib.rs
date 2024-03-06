@@ -1,6 +1,6 @@
 #![deny(unsafe_code)]
 
-use crate::params::PolySynthParams;
+use crate::params::{PolySynthParamModulations, PolySynthParams};
 use crate::poly_oscillator::PolyOscillator;
 use clack_extensions::state::PluginState;
 use clack_extensions::{audio_ports::*, note_ports::*, params::*};
@@ -62,6 +62,7 @@ impl DefaultPluginFactory for PolySynthPlugin {
 pub struct PolySynthAudioProcessor<'a> {
     /// The oscillator bank.
     poly_osc: PolyOscillator,
+    modulation_values: PolySynthParamModulations,
     /// A reference to the plugin's shared data.
     shared: &'a PolySynthPluginShared,
 }
@@ -77,6 +78,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
     ) -> Result<Self, PluginError> {
         Ok(Self {
             poly_osc: PolyOscillator::new(16, audio_config.sample_rate as f32),
+            modulation_values: PolySynthParamModulations::new(),
             shared,
         })
     }
@@ -112,10 +114,11 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
             for event in event_batch.events() {
                 self.poly_osc.handle_event(event);
                 self.shared.params.handle_event(event);
+                self.modulation_values.handle_event(event);
             }
 
             // Received the updated volume parameter
-            let volume = self.shared.params.get_volume();
+            let volume = self.shared.params.get_volume() + self.modulation_values.volume();
 
             // With all the events out of the way, we can now handle a whole batch of sample
             // all at once.

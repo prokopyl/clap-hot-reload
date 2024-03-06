@@ -87,19 +87,29 @@ impl<'a> PluginMainThreadParams for PolySynthPluginMainThread<'a> {
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
-        if param_index != 0 {
-            return;
+        if param_index == 0 {
+            info.set(&ParamInfo {
+                id: 1.into(),
+                flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
+                cookie: Default::default(),
+                name: b"Volume",
+                module: b"",
+                min_value: 0.0,
+                max_value: 1.0,
+                default_value: DEFAULT_VOLUME as f64,
+            })
+        } else if param_index == 1 {
+            info.set(&ParamInfo {
+                id: 2.into(),
+                flags: ParamInfoFlags::IS_AUTOMATABLE,
+                cookie: Default::default(),
+                name: b"Foo param!",
+                module: b"",
+                min_value: 0.0,
+                max_value: 1.0,
+                default_value: DEFAULT_VOLUME as f64,
+            })
         }
-        info.set(&ParamInfo {
-            id: 1,
-            flags: ParamInfoFlags::IS_AUTOMATABLE,
-            cookie: Default::default(),
-            name: b"Volume",
-            module: b"",
-            min_value: 0.0,
-            max_value: 1.0,
-            default_value: DEFAULT_VOLUME as f64,
-        })
     }
 
     fn get_value(&mut self, param_id: u32) -> Option<f64> {

@@ -188,9 +188,12 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     }
 
     fn deactivate(self, main_thread: &mut WrapperPluginMainThread<'a>) {
-        main_thread
-            .plugin_instance
-            .deactivate(self.current_audio_processor.into_stopped());
+        // Can happen if we swapped but audio processor didn't (yet?)
+        main_thread.deactivate_wrapped_instance(self.current_audio_processor.into_stopped());
+
+        if let Some(old_processor) = self.fade_out_audio_processor {
+            main_thread.deactivate_wrapped_instance(old_processor.into_stopped());
+        }
 
         if let Some(channel) = main_thread.audio_processor_channel.take() {
             channel.consume(self.channel)

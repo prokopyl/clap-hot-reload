@@ -8,7 +8,7 @@ impl<'a> PluginNotePortsImpl for WrapperPluginMainThread<'a> {
             return 0;
         };
 
-        note_ports.count(host.plugin.as_mut().unwrap(), is_input)
+        note_ports.count(host.plugin(), is_input)
     }
 
     fn get(&mut self, index: u32, is_input: bool, writer: &mut NotePortInfoWriter) {
@@ -19,8 +19,7 @@ impl<'a> PluginNotePortsImpl for WrapperPluginMainThread<'a> {
 
         let mut buf = NotePortInfoBuffer::new();
 
-        if let Some(data) = note_ports.get(host.plugin.as_mut().unwrap(), index, is_input, &mut buf)
-        {
+        if let Some(data) = note_ports.get(host.plugin(), index, is_input, &mut buf) {
             writer.set(&data);
         }
     }

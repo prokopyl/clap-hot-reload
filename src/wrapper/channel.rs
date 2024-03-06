@@ -67,18 +67,41 @@ impl MainThreadChannel {
         self.sender.send(processor).map_err(|e| e.0)
     }
 
+    pub fn defer_destroy_if_active(&mut self, instance: PluginInstance<WrapperHost>) {
+        if instance.is_active() {
+            self.instances_awaiting_destruction.push(instance)
+        } else {
+            drop(instance)
+        }
+    }
+
+    pub fn deactivate_old_instance(&mut self, processor: StoppedPluginAudioProcessor<WrapperHost>) {
+        let Some(matching_index) = self
+            .instances_awaiting_destruction
+            .iter()
+            .position(|i| processor.matches(i))
+        else {
+            drop(processor);
+            return;
+        };
+
+        let mut instance = self.instances_awaiting_destruction.remove(matching_index);
+        instance.deactivate(processor);
+    }
+
     pub fn destroy_awaiting(&mut self) {
-        for audio_processor in self.receiver.try_iter() {
+        for processor in self.receiver.try_iter() {
             let Some(matching_index) = self
                 .instances_awaiting_destruction
                 .iter()
-                .position(|i| audio_processor.matches(i))
+                .position(|i| processor.matches(i))
             else {
+                drop(processor);
                 return;
             };
 
             let mut instance = self.instances_awaiting_destruction.remove(matching_index);
-            instance.deactivate(audio_processor);
+            instance.deactivate(processor);
         }
     }
 

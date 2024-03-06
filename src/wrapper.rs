@@ -1,3 +1,4 @@
+use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::timer::PluginTimer;
 use clack_host::prelude::*;
 use clack_plugin::prelude::*;
@@ -86,7 +87,7 @@ impl<'a> WrapperHostShared<'a> {
     }
 
     pub fn wrapped_plugin(&self) -> &WrappedPluginExtensions<'a> {
-        &self.plugin.get().unwrap() // FIXME: unwrap
+        self.plugin.get().unwrap() // FIXME: unwrap
     }
 }
 
@@ -122,6 +123,10 @@ impl<'a> WrapperHostMainThread<'a> {
             plugin: None,
         }
     }
+
+    pub fn plugin(&mut self) -> &mut PluginMainThreadHandle<'a> {
+        self.plugin.as_mut().unwrap()
+    }
 }
 
 impl<'a> HostMainThread<'a> for WrapperHostMainThread<'a> {
@@ -155,6 +160,7 @@ impl Plugin for WrapperPlugin {
 pub struct WrapperPluginShared<'a> {
     host: HostHandle<'a>,
     reported_extensions: ReportedExtensions,
+    params: Option<&'a HostParams>,
 }
 
 impl<'a> WrapperPluginShared<'a> {
@@ -163,6 +169,7 @@ impl<'a> WrapperPluginShared<'a> {
 
         Self {
             host,
+            params: host.extension(),
             reported_extensions,
         }
     }
@@ -180,6 +187,7 @@ pub struct WrapperPluginMainThread<'a> {
     plugin_id: CString,
     current_audio_config: Option<AudioConfiguration>,
     audio_ports_info: PluginAudioPortsInfo,
+    param_info_cache: ParamInfoCache,
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
@@ -209,6 +217,7 @@ impl<'a> WrapperPluginMainThread<'a> {
         // host.shared().request_callback(); // To finish configuring timers. TODO: Bitwig bug?
         Ok(Self {
             audio_ports_info: PluginAudioPortsInfo::new(&mut plugin_instance),
+            param_info_cache: ParamInfoCache::new(&mut plugin_instance),
 
             host,
             shared,
@@ -233,14 +242,37 @@ impl<'a> WrapperPluginMainThread<'a> {
 
         println!("Received new bundle!!");
 
-        let new_instance =
+        let mut new_instance =
             WrapperHost::new_instance(self.host, receiver.current_bundle(), &self.plugin_id);
+
+        if let Err(e) = transfer_state(&mut self.plugin_instance, &mut new_instance) {
+            eprintln!("Could not transfer state to new hot-loaded instance: {e}");
+        }
+
         let old_instance = core::mem::replace(&mut self.plugin_instance, new_instance);
 
-        // This means the wrapper plugin is activated, and possibly processing audio.
-        if let (Some(channel), Some(config)) =
-            (&mut self.audio_processor_channel, self.current_audio_config)
-        {
+        // TODO: handle the function crashing here and ending up with a partial swap?
+        let required_rescan = self.param_info_cache.update(&mut self.plugin_instance);
+
+        if let Some(host_params) = self.shared.params {
+            // Always rescan text renderings, we can never really now if it changed or not
+            host_params.rescan(&mut self.host, required_rescan | ParamRescanFlags::TEXT)
+        }
+
+        // If there's no channel, we aren't active or processing. No need to keep the old instance around.
+        let Some(channel) = &mut self.audio_processor_channel else {
+            drop(old_instance);
+            return;
+        };
+
+        let needs_restart = required_rescan.requires_restart();
+
+        if needs_restart {
+            // Don't bother activating the new instance yet.
+            channel.defer_destroy_if_active(old_instance);
+        } else {
+            let config = self.current_audio_config.unwrap(); // TODO: this should always be the case if channel exists (checked above).
+
             // TODO: unwrap
             let audio_processor =
                 WrapperHost::activate_instance(&mut self.plugin_instance, config).unwrap();
@@ -248,6 +280,20 @@ impl<'a> WrapperPluginMainThread<'a> {
             // TODO: handle errors
             let _ = channel.send_new_audio_processor(audio_processor, old_instance);
         }
-        // Just drop old_instance if it wasn't activated.
+    }
+
+    fn deactivate_wrapped_instance(
+        &mut self,
+        audio_processor: StoppedPluginAudioProcessor<WrapperHost>,
+    ) {
+        // Figure out where it comes from
+        // Can happen if we swapped but audio processor didn't (yet?)
+        if audio_processor.matches(&self.plugin_instance) {
+            self.plugin_instance.deactivate(audio_processor);
+        } else if let Some(channel) = &mut self.audio_processor_channel {
+            channel.deactivate_old_instance(audio_processor)
+        } else {
+            drop(audio_processor)
+        }
     }
 }

@@ -28,7 +28,7 @@ impl PluginAudioPortsInfo {
             return;
         };
 
-        let plugin = host.plugin.as_mut().unwrap();
+        let plugin = host.plugin();
         self.output_channels_count_per_port.clear();
 
         let output_port_count = audio_ports.count(plugin, false);
@@ -69,7 +69,7 @@ impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
             return 0;
         };
 
-        audio_ports.count(host.plugin.as_mut().unwrap(), is_input)
+        audio_ports.count(host.plugin(), is_input)
     }
 
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
@@ -80,9 +80,7 @@ impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
 
         let mut buf = AudioPortInfoBuffer::new();
 
-        if let Some(data) =
-            audio_ports.get(host.plugin.as_mut().unwrap(), index, is_input, &mut buf)
-        {
+        if let Some(data) = audio_ports.get(host.plugin(), index, is_input, &mut buf) {
             writer.set(&data)
         }
     }

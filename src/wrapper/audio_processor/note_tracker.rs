@@ -43,9 +43,9 @@ impl<E> PartialEq<NoteEvent<E>> for ActiveNote {
             return self.note_id == other.note_id();
         }
 
-        return self.port_index == other.port_index()
+        self.port_index == other.port_index()
             && self.channel == other.channel()
-            && self.key == other.key();
+            && self.key == other.key()
     }
 }
 

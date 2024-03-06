@@ -11,7 +11,9 @@ pub use audio_ports::*;
 
 mod note_ports;
 mod params;
+pub use params::*;
 mod state;
+pub use state::*;
 mod timer;
 pub use timer::*;
 

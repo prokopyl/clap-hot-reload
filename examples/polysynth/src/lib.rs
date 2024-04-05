@@ -23,7 +23,10 @@ impl Plugin for PolySynthPlugin {
     type Shared<'a> = PolySynthPluginShared;
     type MainThread<'a> = PolySynthPluginMainThread<'a>;
 
-    fn declare_extensions(builder: &mut PluginExtensions<Self>, _shared: &PolySynthPluginShared) {
+    fn declare_extensions(
+        builder: &mut PluginExtensions<Self>,
+        _shared: Option<&PolySynthPluginShared>,
+    ) {
         builder
             .register::<PluginAudioPorts>()
             .register::<PluginNotePorts>()
@@ -43,7 +46,7 @@ impl DefaultPluginFactory for PolySynthPlugin {
         .with_features([SYNTHESIZER, MONO, INSTRUMENT])
     }
 
-    fn new_shared(_host: HostHandle) -> Result<PolySynthPluginShared, PluginError> {
+    fn new_shared(_host: HostSharedHandle) -> Result<PolySynthPluginShared, PluginError> {
         Ok(PolySynthPluginShared {
             params: PolySynthParams::new(),
         })

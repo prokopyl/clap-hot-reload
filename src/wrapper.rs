@@ -2,7 +2,7 @@ use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::timer::PluginTimer;
 use clack_host::prelude::*;
 use clack_plugin::prelude::*;
-use clack_plugin::prelude::{HostHandle, HostMainThreadHandle};
+use clack_plugin::prelude::{HostMainThreadHandle, HostSharedHandle};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
@@ -54,7 +54,7 @@ impl WrapperHost {
     ) -> Result<StoppedPluginAudioProcessor<WrapperHost>, HostError> {
         // TODO: why are the audio configs different...
         plugin_instance.activate(
-            |plugin, shared, _| WrapperHostAudioProcessor { shared, plugin },
+            |shared, _| WrapperHostAudioProcessor { _shared: shared },
             PluginAudioConfiguration {
                 frames_count_range: audio_config.min_sample_count..=audio_config.max_sample_count,
                 sample_rate: audio_config.sample_rate,
@@ -74,25 +74,25 @@ impl Host for WrapperHost {
 }
 
 pub struct WrapperHostShared<'a> {
-    pub(crate) plugin: OnceLock<WrappedPluginExtensions<'a>>,
+    pub(crate) plugin: OnceLock<WrappedPluginExtensions>,
     parent: ParentHostExtensions<'a>,
 }
 
 impl<'a> WrapperHostShared<'a> {
-    pub fn new(parent: HostHandle<'a>) -> Self {
+    pub fn new(parent: HostSharedHandle<'a>) -> Self {
         Self {
             plugin: OnceLock::new(),
             parent: ParentHostExtensions::new(parent),
         }
     }
 
-    pub fn wrapped_plugin(&self) -> &WrappedPluginExtensions<'a> {
+    pub fn wrapped_plugin(&self) -> &WrappedPluginExtensions {
         self.plugin.get().unwrap() // FIXME: unwrap
     }
 }
 
 impl<'a> HostShared<'a> for WrapperHostShared<'a> {
-    fn instantiated(&self, instance: PluginSharedHandle<'a>) {
+    fn initializing(&self, instance: InitializingPluginHandle<'a>) {
         let _ = self.plugin.set(WrappedPluginExtensions::new(instance));
     }
 
@@ -111,7 +111,7 @@ impl<'a> HostShared<'a> for WrapperHostShared<'a> {
 
 pub struct WrapperHostMainThread<'a> {
     shared: &'a WrapperHostShared<'a>,
-    plugin: Option<PluginMainThreadHandle<'a>>,
+    plugin: Option<InitializedPluginHandle<'a>>,
     parent: HostMainThreadHandle<'a>,
 }
 
@@ -123,21 +123,16 @@ impl<'a> WrapperHostMainThread<'a> {
             plugin: None,
         }
     }
-
-    pub fn plugin(&mut self) -> &mut PluginMainThreadHandle<'a> {
-        self.plugin.as_mut().unwrap()
-    }
 }
 
 impl<'a> HostMainThread<'a> for WrapperHostMainThread<'a> {
-    fn instantiated(&mut self, instance: PluginMainThreadHandle<'a>) {
+    fn initialized(&mut self, instance: InitializedPluginHandle<'a>) {
         self.plugin = Some(instance)
     }
 }
 
 pub struct WrapperHostAudioProcessor<'a> {
-    shared: &'a WrapperHostShared<'a>,
-    plugin: PluginAudioProcessorHandle<'a>,
+    _shared: &'a WrapperHostShared<'a>,
     // parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
 }
 
@@ -150,26 +145,29 @@ impl Plugin for WrapperPlugin {
     type Shared<'a> = WrapperPluginShared<'a>;
     type MainThread<'a> = WrapperPluginMainThread<'a>;
 
-    fn declare_extensions(builder: &mut PluginExtensions<Self>, shared: &Self::Shared<'_>) {
+    fn declare_extensions(builder: &mut PluginExtensions<Self>, shared: Option<&Self::Shared<'_>>) {
         builder.register::<PluginTimer>();
 
-        shared.reported_extensions.declare_to_host(builder);
+        if let Some(shared) = shared {
+            // TODO: find a way to report this even if the host queries extensions early
+            shared.reported_extensions.declare_to_host(builder);
+        }
     }
 }
 
 pub struct WrapperPluginShared<'a> {
-    _host: HostHandle<'a>,
+    _host: HostSharedHandle<'a>,
     reported_extensions: ReportedExtensions,
-    params: Option<&'a HostParams>,
+    params: Option<HostParams>,
 }
 
 impl<'a> WrapperPluginShared<'a> {
-    pub fn new(host: HostHandle<'a>, plugin_handle: &PluginInstance<WrapperHost>) -> Self {
-        let reported_extensions = plugin_handle.shared_host_data().wrapped_plugin().report();
+    pub fn new(host: HostSharedHandle<'a>, plugin_handle: &PluginInstance<WrapperHost>) -> Self {
+        let reported_extensions = plugin_handle.shared_handler().wrapped_plugin().report();
 
         Self {
             _host: host,
-            params: host.extension(),
+            params: host.get_extension(),
             reported_extensions,
         }
     }
@@ -229,6 +227,14 @@ impl<'a> WrapperPluginMainThread<'a> {
             audio_processor_channel: None,
             current_audio_config: None,
         })
+    }
+
+    pub fn wrapped_extensions(&self) -> &WrappedPluginExtensions {
+        self.plugin_instance.shared_handler().wrapped_plugin()
+    }
+
+    pub fn plugin_handle(&mut self) -> PluginMainThreadHandle {
+        self.plugin_instance.plugin_handle()
     }
 
     fn check_for_new_bundles(&mut self) {

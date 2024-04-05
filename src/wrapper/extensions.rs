@@ -18,20 +18,20 @@ mod timer;
 pub use timer::*;
 
 pub struct ParentHostExtensions<'a> {
-    handle: HostHandle<'a>, // TODO: naming consistency with plugin side
-    audio_ports: Option<&'a HostAudioPorts>,
+    handle: HostSharedHandle<'a>,
+    audio_ports: Option<HostAudioPorts>,
 }
 
 impl<'a> ParentHostExtensions<'a> {
-    pub fn new(handle: HostHandle<'a>) -> Self {
+    pub fn new(handle: HostSharedHandle<'a>) -> Self {
         Self {
-            audio_ports: handle.extension(), // TODO: extension() naming consistency with plugin side
+            audio_ports: handle.get_extension(), // TODO: extension() naming consistency with plugin side
             handle,
         }
     }
 
     #[inline]
-    pub fn handle(&self) -> &HostHandle<'a> {
+    pub fn handle(&self) -> &HostSharedHandle<'a> {
         &self.handle
     }
 
@@ -42,15 +42,15 @@ impl<'a> ParentHostExtensions<'a> {
     }
 }
 
-pub struct WrappedPluginExtensions<'a> {
-    audio_ports: Option<&'a PluginAudioPorts>,
-    note_ports: Option<&'a PluginNotePorts>,
-    params: Option<&'a PluginParams>,
-    state: Option<&'a PluginState>,
+pub struct WrappedPluginExtensions {
+    audio_ports: Option<PluginAudioPorts>,
+    note_ports: Option<PluginNotePorts>,
+    params: Option<PluginParams>,
+    state: Option<PluginState>,
 }
 
-impl<'a> WrappedPluginExtensions<'a> {
-    pub fn new(handle: PluginSharedHandle<'a>) -> Self {
+impl WrappedPluginExtensions {
+    pub fn new(handle: InitializingPluginHandle) -> Self {
         Self {
             audio_ports: handle.get_extension(),
             note_ports: handle.get_extension(),

@@ -77,22 +77,20 @@ impl ParamInfoCache {
     }
 
     pub fn update(&mut self, instance: &mut PluginInstance<WrapperHost>) -> ParamRescanFlags {
-        let host = instance.main_thread_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = instance.shared_handler().wrapped_plugin().params else {
             return ParamRescanFlags::empty();
         };
 
-        let plugin = host.plugin();
+        let mut plugin = instance.plugin_handle();
 
         let mut flags = ParamRescanFlags::empty();
         let mut buf = ParamInfoBuffer::new();
 
         let mut unseen_ids: Vec<_> = self.params.iter().map(|p| p.id).collect();
-        let param_count = params.count(plugin);
+        let param_count = params.count(&mut plugin);
 
         for i in 0..param_count {
-            let Some(info) = params.get_info(plugin, i, &mut buf) else {
+            let Some(info) = params.get_info(&mut plugin, i, &mut buf) else {
                 continue;
             };
 
@@ -133,13 +131,11 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
     }
 
     fn get_value(&mut self, param_id: u32) -> Option<f64> {
-        let host = self.plugin_instance.main_thread_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = self.wrapped_extensions().params else {
             return None;
         };
 
-        params.get_value(host.plugin(), param_id)
+        params.get_value(&mut self.plugin_handle(), param_id)
     }
 
     fn value_to_text(
@@ -148,15 +144,13 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         value: f64,
         writer: &mut ParamDisplayWriter,
     ) -> std::fmt::Result {
-        let host = self.plugin_instance.main_thread_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = self.wrapped_extensions().params else {
             todo!()
         };
 
         let mut buf = [MaybeUninit::zeroed(); 128];
         let str = params
-            .value_to_text(host.plugin(), param_id, value, &mut buf) // TODO: make value_to_text return an error, not option
+            .value_to_text(&mut self.plugin_handle(), param_id, value, &mut buf) // TODO: make value_to_text return an error, not option
             .ok_or(core::fmt::Error)?;
 
         // FIXME: all of this is super ugly
@@ -164,15 +158,13 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
     }
 
     fn text_to_value(&mut self, param_id: u32, text: &str) -> Option<f64> {
-        let host = self.plugin_instance.main_thread_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = self.wrapped_extensions().params else {
             return None;
         };
 
         // FIXME: alloc is unnecessary, it's already a C string pointer behind the scenes!
         let buf = CString::new(text).unwrap();
-        params.text_to_value(host.plugin(), param_id, &buf)
+        params.text_to_value(&mut self.plugin_handle(), param_id, &buf)
     }
 
     fn flush(
@@ -180,15 +172,13 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         input_parameter_changes: &InputEvents,
         output_parameter_changes: &mut OutputEvents,
     ) {
-        let host = self.plugin_instance.main_thread_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = self.wrapped_extensions().params else {
             return;
         };
 
         // FIXME: parameter name inconsistency between flush_active and this flush's params
         params.flush(
-            host.plugin(),
+            &mut self.plugin_handle(),
             input_parameter_changes,
             output_parameter_changes,
         );
@@ -201,15 +191,18 @@ impl<'a> PluginAudioProcessorParams for WrapperPluginAudioProcessor<'a> {
         input_parameter_changes: &InputEvents,
         output_parameter_changes: &mut OutputEvents,
     ) {
-        let host = self.current_audio_processor.audio_processor_host_data_mut();
-
-        let Some(params) = host.shared.wrapped_plugin().params else {
+        let Some(params) = self
+            .current_audio_processor
+            .shared_handler()
+            .wrapped_plugin()
+            .params
+        else {
             return;
         };
 
         // FIXME: parameter name inconsistency between flush_active and this flush's params
         params.flush_active(
-            &mut host.plugin,
+            &mut self.current_audio_processor.plugin_handle(),
             input_parameter_changes,
             output_parameter_changes,
         );

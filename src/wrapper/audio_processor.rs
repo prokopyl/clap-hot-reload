@@ -2,8 +2,8 @@ use crate::wrapper::audio_processor::note_tracker::NoteTracker;
 use crate::wrapper::*;
 use clack_host::prelude::ProcessStatus;
 use clack_plugin::host::HostAudioThreadHandle;
-use clack_plugin::plugin::{AudioConfiguration, PluginAudioProcessor, PluginError};
-use clack_plugin::prelude::{Audio, Events, Process};
+use clack_plugin::plugin::{PluginAudioProcessor, PluginError};
+use clack_plugin::prelude::{Audio, Events, PluginAudioConfiguration, Process};
 
 mod cross_fader;
 use cross_fader::*;
@@ -58,11 +58,10 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         host: HostAudioThreadHandle<'a>,
         main_thread: &mut WrapperPluginMainThread<'a>,
         shared: &'a WrapperPluginShared<'a>,
-        audio_config: AudioConfiguration,
+        audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
         main_thread.timers.init(&mut main_thread.host); // Do it now I guess... (TODO: fixme)
 
-        // FIXME: Host should very much NOT be Copy or Clone
         let audio_processor =
             WrapperHost::activate_instance(&mut main_thread.plugin_instance, audio_config)?;
 
@@ -111,7 +110,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         let status = if let Some(fade_out_audio_processor) = &mut self.fade_out_audio_processor {
             let audio_inputs = InputAudioBuffers::from_plugin_audio(&audio);
 
-            let mut audio_outputs = self.output_buffers.output_buffers_for(true);
+            let mut audio_outputs = self.output_buffers.output_buffers_for(true, &audio);
 
             let combined;
             let in_events;
@@ -138,7 +137,12 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                 )
                 .map_err(|_| PluginError::OperationFailed)?;
 
-            let mut audio_outputs = self.output_buffers.output_buffers_for(false);
+            // Update the constant masks for all outputs
+            for (mut output, info) in audio.output_ports().zip(audio_outputs.port_infos()) {
+                output.set_constant_mask(info.constant_mask())
+            }
+
+            let mut audio_outputs = self.output_buffers.output_buffers_for(false, &audio);
 
             let fade_out_status = fade_out_audio_processor
                 .ensure_processing_started()

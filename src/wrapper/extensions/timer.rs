@@ -22,7 +22,7 @@ impl WrapperTimerHandler {
         }
         self.is_initialized = true;
 
-        if let Some(timer) = host.shared().get_extension::<HostTimer>() {
+        if let Some(timer) = host.get_extension::<HostTimer>() {
             let res = timer.register_timer(host, 200);
             dbg!(&res);
             if let Ok(timer_id) = res {

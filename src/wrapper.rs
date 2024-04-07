@@ -21,20 +21,20 @@ use channel::*;
 
 impl WrapperHost {
     pub fn new_instance(
-        host: HostMainThreadHandle,
+        host: &HostMainThreadHandle,
         bundle: &PluginBundle,
         instantiated_plugin_id: &CStr,
     ) -> PluginInstance<Self> {
-        let info = HostInfo::from_plugin(&host.shared().info());
+        let info = HostInfo::from_plugin(&host);
 
+        // FIXME: nah that's just UB
         // This is a really ugly hack, due to the fact that plugin instances are essentially 'static
         // for now. This is fixed in the plugin-instance-sublifetimes branch of clack but is blocked
         // on a borrow checker limitation bug:
         // https://internals.rust-lang.org/t/is-due-to-current-limitations-in-the-borrow-checker-overzealous/17818
-        let host: HostMainThreadHandle<'static> = unsafe { core::mem::transmute(host) };
+        let host: HostMainThreadHandle<'static> = unsafe { core::mem::transmute_copy(host) };
         let shared = host.shared();
 
-        // FIXME: HostMainThreadHandle should DEFINITELY NOT be copy
         // TODO: unwrap
         let instance = PluginInstance::<WrapperHost>::new(
             |_| WrapperHostShared::<'_>::new(shared),
@@ -50,20 +50,16 @@ impl WrapperHost {
 
     pub fn activate_instance(
         plugin_instance: &mut PluginInstance<WrapperHost>,
-        audio_config: AudioConfiguration,
+        audio_config: PluginAudioConfiguration,
     ) -> Result<StoppedPluginAudioProcessor<WrapperHost>, HostError> {
-        // TODO: why are the audio configs different...
         plugin_instance.activate(
             |shared, _| WrapperHostAudioProcessor { _shared: shared },
-            PluginAudioConfiguration {
-                frames_count_range: audio_config.min_sample_count..=audio_config.max_sample_count,
-                sample_rate: audio_config.sample_rate,
-            },
+            audio_config,
         )
     }
 }
 
-impl Host for WrapperHost {
+impl HostHandlers for WrapperHost {
     type Shared<'a> = WrapperHostShared<'a>;
     type MainThread<'a> = WrapperHostMainThread<'a>;
     type AudioProcessor<'a> = WrapperHostAudioProcessor<'a>;
@@ -91,7 +87,7 @@ impl<'a> WrapperHostShared<'a> {
     }
 }
 
-impl<'a> HostShared<'a> for WrapperHostShared<'a> {
+impl<'a> SharedHandler<'a> for WrapperHostShared<'a> {
     fn initializing(&self, instance: InitializingPluginHandle<'a>) {
         let _ = self.plugin.set(WrappedPluginExtensions::new(instance));
     }
@@ -125,7 +121,7 @@ impl<'a> WrapperHostMainThread<'a> {
     }
 }
 
-impl<'a> HostMainThread<'a> for WrapperHostMainThread<'a> {
+impl<'a> MainThreadHandler<'a> for WrapperHostMainThread<'a> {
     fn initialized(&mut self, instance: InitializedPluginHandle<'a>) {
         self.plugin = Some(instance)
     }
@@ -136,7 +132,7 @@ pub struct WrapperHostAudioProcessor<'a> {
     // parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
 }
 
-impl<'a> HostAudioProcessor<'a> for WrapperHostAudioProcessor<'a> {}
+impl<'a> AudioProcessorHandler<'a> for WrapperHostAudioProcessor<'a> {}
 
 pub struct WrapperPlugin;
 
@@ -183,7 +179,7 @@ pub struct WrapperPluginMainThread<'a> {
     pub timers: WrapperTimerHandler,
     audio_processor_channel: Option<MainThreadChannel>,
     plugin_id: CString,
-    current_audio_config: Option<AudioConfiguration>,
+    current_audio_config: Option<PluginAudioConfiguration>,
     audio_ports_info: PluginAudioPortsInfo,
     param_info_cache: ParamInfoCache,
 }
@@ -249,7 +245,7 @@ impl<'a> WrapperPluginMainThread<'a> {
         println!("Received new bundle!!");
 
         let mut new_instance =
-            WrapperHost::new_instance(self.host, receiver.current_bundle(), &self.plugin_id);
+            WrapperHost::new_instance(&self.host, receiver.current_bundle(), &self.plugin_id);
 
         if let Err(e) = transfer_state(&mut self.plugin_instance, &mut new_instance) {
             eprintln!("Could not transfer state to new hot-loaded instance: {e}");

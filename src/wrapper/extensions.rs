@@ -25,7 +25,7 @@ pub struct ParentHostExtensions<'a> {
 impl<'a> ParentHostExtensions<'a> {
     pub fn new(handle: HostSharedHandle<'a>) -> Self {
         Self {
-            audio_ports: handle.get_extension(), // TODO: extension() naming consistency with plugin side
+            audio_ports: handle.get_extension(),
             handle,
         }
     }

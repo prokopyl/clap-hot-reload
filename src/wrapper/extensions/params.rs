@@ -2,7 +2,6 @@ use crate::wrapper::*;
 use clack_extensions::params::*;
 use clack_host::utils::Cookie;
 use clack_plugin::utils::ClapId;
-use std::ffi::CString;
 use std::fmt::Write;
 use std::mem::MaybeUninit;
 
@@ -149,22 +148,18 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         };
 
         let mut buf = [MaybeUninit::zeroed(); 128];
-        let str = params
-            .value_to_text(&mut self.plugin_handle(), param_id, value, &mut buf) // TODO: make value_to_text return an error, not option
-            .ok_or(core::fmt::Error)?;
+        let bytes = params.value_to_text(&mut self.plugin_handle(), param_id, value, &mut buf)?;
+        let str = String::from_utf8_lossy(bytes);
 
-        // FIXME: all of this is super ugly
-        writer.write_str(core::str::from_utf8(str).unwrap())
+        writer.write_str(&str)
     }
 
-    fn text_to_value(&mut self, param_id: u32, text: &str) -> Option<f64> {
+    fn text_to_value(&mut self, param_id: u32, text: &CStr) -> Option<f64> {
         let Some(params) = self.wrapped_extensions().params else {
             return None;
         };
 
-        // FIXME: alloc is unnecessary, it's already a C string pointer behind the scenes!
-        let buf = CString::new(text).unwrap();
-        params.text_to_value(&mut self.plugin_handle(), param_id, &buf)
+        params.text_to_value(&mut self.plugin_handle(), param_id, text)
     }
 
     fn flush(
@@ -176,7 +171,6 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
             return;
         };
 
-        // FIXME: parameter name inconsistency between flush_active and this flush's params
         params.flush(
             &mut self.plugin_handle(),
             input_parameter_changes,
@@ -200,7 +194,6 @@ impl<'a> PluginAudioProcessorParams for WrapperPluginAudioProcessor<'a> {
             return;
         };
 
-        // FIXME: parameter name inconsistency between flush_active and this flush's params
         params.flush_active(
             &mut self.current_audio_processor.plugin_handle(),
             input_parameter_changes,

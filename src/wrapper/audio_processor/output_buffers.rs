@@ -1,7 +1,7 @@
 use crate::wrapper::audio_processor::cross_fader::CrossFader;
 use crate::wrapper::extensions::PluginAudioPortsInfo;
 use clack_host::prelude::{AudioPortBuffer, AudioPortBufferType, AudioPorts, OutputAudioBuffers};
-use clack_plugin::prelude::{Audio, AudioConfiguration, PluginError};
+use clack_plugin::prelude::{Audio, PluginAudioConfiguration, PluginError};
 
 // TODO: handle 64bit buffers
 pub struct OutputBuffers {
@@ -14,9 +14,9 @@ pub struct OutputBuffers {
 impl OutputBuffers {
     pub fn new_from_config(
         info: &PluginAudioPortsInfo,
-        audio_configuration: AudioConfiguration,
+        audio_configuration: PluginAudioConfiguration,
     ) -> Self {
-        let buffer_frame_count = audio_configuration.max_sample_count;
+        let buffer_frame_count = audio_configuration.max_frames_count;
         let channel_count_per_port = info.output_channels_count_per_port();
 
         let port_count = channel_count_per_port.len();
@@ -37,7 +37,11 @@ impl OutputBuffers {
         }
     }
 
-    pub fn output_buffers_for(&mut self, get_main: bool) -> OutputAudioBuffers {
+    pub fn output_buffers_for(
+        &mut self,
+        get_main: bool,
+        plugin_audio: &Audio,
+    ) -> OutputAudioBuffers {
         let bufs = if get_main {
             &mut self.main_buffers
         } else {
@@ -46,12 +50,14 @@ impl OutputBuffers {
 
         self.audio_port_buffers
             // TODO: try and see if it works with AsRef instead of needing straight up slice
-            .with_output_buffers(bufs.iter_mut().map(|buf| AudioPortBuffer {
-                latency: 0, // TODO: handle latency by adding a PortInfo that only takes & from audio.
-                channels: AudioPortBufferType::f32_output_only(
-                    buf.iter_mut().map(|buf| buf.as_mut_slice()),
-                ),
-            }))
+            .with_output_buffers(bufs.iter_mut().zip(plugin_audio.output_ports_infos()).map(
+                |(buf, info)| AudioPortBuffer {
+                    latency: info.latency(),
+                    channels: AudioPortBufferType::f32_output_only(
+                        buf.iter_mut().map(|buf| buf.as_mut_slice()),
+                    ),
+                },
+            ))
     }
 
     pub fn output_crossfade(

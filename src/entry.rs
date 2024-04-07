@@ -122,7 +122,7 @@ impl PluginFactory for HotReloaderPluginFactory {
                         Some(r) => r.current_bundle(),
                     };
 
-                    let instance = WrapperHost::new_instance(host, bundle, &plugin_id);
+                    let instance = WrapperHost::new_instance(&host, bundle, &plugin_id);
 
                     Ok((
                         WrapperPluginShared::new(host.shared(), &instance),

@@ -1,51 +1,44 @@
-use clack_host::events::event_types::{NoteEvent, NoteOnEvent};
+use clack_host::events::event_types::NoteOnEvent;
 use clack_host::events::spaces::CoreEventSpace;
-use clack_host::events::EventFlags;
-use clack_host::prelude::{EventBuffer, EventHeader, InputEvents};
+use clack_host::events::Match::Specific;
+use clack_host::prelude::{EventBuffer, InputEvents, Pckn};
 
 #[derive(Debug)]
 struct ActiveNote {
-    note_id: i32,
-    port_index: i16,
-    channel: i16,
-    key: i16,
+    port: u16,
+    channel: u16,
+    key: u16,
+    note_id: u32,
     velocity: f64, // TODO: all the other note stuff
 }
 
 impl ActiveNote {
     fn to_note_event(&self) -> NoteOnEvent {
-        // TODO: are no flags always okay?
-        NoteOnEvent(NoteEvent::new(
-            EventHeader::new_core(0, EventFlags::empty()),
-            self.note_id,
-            self.port_index,
-            self.key, // TODO: fix ordering
-            self.channel,
+        NoteOnEvent::new(
+            0,
+            Pckn::new(self.port, self.channel, self.key, self.note_id),
             self.velocity,
-        ))
+        )
     }
 
-    fn from_note_on_event(event: &NoteOnEvent) -> Self {
-        let event = &event.0;
-        Self {
-            note_id: event.note_id(),
-            port_index: event.port_index(),
-            channel: event.channel(),
-            key: event.key(),
+    fn from_note_on_event(event: &NoteOnEvent) -> Option<Self> {
+        Some(Self {
+            // Some hosts won't populate note_id
+            note_id: event.note_id().into_specific().unwrap_or(0),
+            port: event.port().into_specific()?,
+            channel: event.channel().into_specific()?,
+            key: event.key().into_specific()?,
             velocity: event.velocity(),
-        }
+        })
     }
 }
 
-impl<E> PartialEq<NoteEvent<E>> for ActiveNote {
-    fn eq(&self, other: &NoteEvent<E>) -> bool {
-        if other.note_id() >= 0 {
-            return self.note_id == other.note_id();
-        }
-
-        self.port_index == other.port_index()
-            && self.channel == other.channel()
-            && self.key == other.key()
+impl PartialEq<Pckn> for ActiveNote {
+    fn eq(&self, other: &Pckn) -> bool {
+        other.note_id.matches(&Specific(self.note_id))
+            && other.port.matches(&Specific(self.port))
+            && other.channel.matches(&Specific(self.channel))
+            && other.key.matches(&Specific(self.key))
     }
 }
 
@@ -65,9 +58,13 @@ impl NoteTracker {
             match event.as_core_event() {
                 // TODO: check duplicates?
                 Some(CoreEventSpace::NoteOn(e)) => {
-                    self.active_notes.push(ActiveNote::from_note_on_event(e))
+                    if let Some(active_note) = ActiveNote::from_note_on_event(e) {
+                        self.active_notes.push(active_note)
+                    }
                 }
-                Some(CoreEventSpace::NoteOff(e)) => self.active_notes.retain(|note| *note != e.0),
+                Some(CoreEventSpace::NoteOff(e)) => {
+                    self.active_notes.retain(|note| *note != e.pckn())
+                }
                 _ => {}
             }
         }

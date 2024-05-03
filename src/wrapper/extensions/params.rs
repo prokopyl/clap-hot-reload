@@ -76,7 +76,7 @@ impl ParamInfoCache {
     }
 
     pub fn update(&mut self, instance: &mut PluginInstance<WrapperHost>) -> ParamRescanFlags {
-        let Some(params) = instance.shared_handler().wrapped_plugin().params else {
+        let Some(params) = instance.use_shared_handler(|h| h.wrapped_plugin().params) else {
             return ParamRescanFlags::empty();
         };
 
@@ -187,9 +187,7 @@ impl<'a> PluginAudioProcessorParams for WrapperPluginAudioProcessor<'a> {
     ) {
         let Some(params) = self
             .current_audio_processor
-            .shared_handler()
-            .wrapped_plugin()
-            .params
+            .use_shared_handler(|h| h.wrapped_plugin().params)
         else {
             return;
         };

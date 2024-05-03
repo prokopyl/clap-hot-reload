@@ -20,7 +20,8 @@ impl PluginAudioPortsInfo {
     }
 
     pub fn update(&mut self, plugin: &mut PluginInstance<WrapperHost>) {
-        let Some(audio_ports) = plugin.shared_handler().wrapped_plugin().audio_ports else {
+        let Some(audio_ports) = plugin.use_shared_handler(|h| h.wrapped_plugin().audio_ports)
+        else {
             // Use default, single port stereo config
             self.output_channels_count_per_port.push(2);
             return;
@@ -62,7 +63,7 @@ impl<'a> HostAudioPortsImpl for WrapperHostMainThread<'a> {
 
 impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
     fn count(&mut self, is_input: bool) -> u32 {
-        let host = self.plugin_instance.shared_handler();
+        let host = self.plugin_instance.use_shared_handler(|h| h);
         let Some(audio_ports) = host.wrapped_plugin().audio_ports else {
             return 0;
         };
@@ -71,7 +72,7 @@ impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
     }
 
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
-        let host = self.plugin_instance.shared_handler();
+        let host = self.plugin_instance.use_shared_handler(|h| h);
         let Some(audio_ports) = host.wrapped_plugin().audio_ports else {
             return;
         };

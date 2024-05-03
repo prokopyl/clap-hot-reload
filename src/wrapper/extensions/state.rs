@@ -7,11 +7,11 @@ pub fn transfer_state(
     src: &mut PluginInstance<WrapperHost>,
     dst: &mut PluginInstance<WrapperHost>,
 ) -> Result<(), StateError> {
-    let Some(src_state) = src.shared_handler().wrapped_plugin().state else {
+    let Some(src_state) = src.use_shared_handler(|h| h.wrapped_plugin().state) else {
         return Ok(());
     };
 
-    let Some(dst_state) = dst.shared_handler().wrapped_plugin().state else {
+    let Some(dst_state) = dst.use_shared_handler(|h| h.wrapped_plugin().state) else {
         return Ok(());
     };
 
@@ -33,8 +33,7 @@ impl<'a> PluginStateImpl for WrapperPluginMainThread<'a> {
             todo!()
         };
 
-        // FIXME: inconsistency: PluginError vs StateError
-        state.save(&mut self.plugin_handle(), output).unwrap();
+        state.save(&mut self.plugin_handle(), output)?;
         Ok(())
     }
 
@@ -43,8 +42,7 @@ impl<'a> PluginStateImpl for WrapperPluginMainThread<'a> {
             todo!()
         };
 
-        // FIXME: inconsistency: PluginError vs StateError
-        state.load(&mut self.plugin_handle(), input).unwrap();
+        state.load(&mut self.plugin_handle(), input)?;
         Ok(())
     }
 }

@@ -159,7 +159,7 @@ pub struct WrapperPluginShared<'a> {
 
 impl<'a> WrapperPluginShared<'a> {
     pub fn new(host: HostSharedHandle<'a>, plugin_handle: &PluginInstance<WrapperHost>) -> Self {
-        let reported_extensions = plugin_handle.shared_handler().wrapped_plugin().report();
+        let reported_extensions = plugin_handle.use_shared_handler(|h| h.wrapped_plugin().report());
 
         Self {
             _host: host,
@@ -226,7 +226,8 @@ impl<'a> WrapperPluginMainThread<'a> {
     }
 
     pub fn wrapped_extensions(&self) -> &WrappedPluginExtensions {
-        self.plugin_instance.shared_handler().wrapped_plugin()
+        self.plugin_instance
+            .use_shared_handler(|h| h.wrapped_plugin())
     }
 
     pub fn plugin_handle(&mut self) -> PluginMainThreadHandle {

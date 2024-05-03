@@ -125,8 +125,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
             let main_status = self
                 .current_audio_processor
-                .ensure_processing_started()
-                .map_err(|_| PluginError::Message("Not started"))?
+                .ensure_processing_started()?
                 .process(
                     &audio_inputs,
                     &mut audio_outputs,
@@ -134,8 +133,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     events.output,
                     process.steady_time,
                     process.transport,
-                )
-                .map_err(|_| PluginError::OperationFailed)?;
+                )?;
 
             // Update the constant masks for all outputs
             for (mut output, info) in audio.output_ports().zip(audio_outputs.port_infos()) {
@@ -145,8 +143,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
             let mut audio_outputs = self.output_buffers.output_buffers_for(false, &audio);
 
             let fade_out_status = fade_out_audio_processor
-                .ensure_processing_started()
-                .map_err(|_| PluginError::Message("Not started"))?
+                .ensure_processing_started()?
                 .process(
                     &audio_inputs,
                     &mut audio_outputs,
@@ -154,8 +151,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     &mut OutputEvents::void(), // Ignore all output events from the instance being faded out
                     process.steady_time,
                     process.transport,
-                )
-                .map_err(|_| PluginError::OperationFailed)?;
+                )?;
 
             self.output_buffers
                 .output_crossfade(&mut self.cross_fader, &mut audio)?;
@@ -175,8 +171,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
             let (audio_inputs, mut audio_outputs) = AudioPorts::from_plugin_audio_mut(&mut audio);
 
             self.current_audio_processor
-                .ensure_processing_started()
-                .map_err(|_| PluginError::Message("Not started"))?
+                .ensure_processing_started()?
                 .process(
                     &audio_inputs,
                     &mut audio_outputs,
@@ -184,8 +179,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     events.output,
                     process.steady_time,
                     process.transport,
-                )
-                .map_err(|_| PluginError::OperationFailed)?
+                )?
         };
 
         Ok(status)

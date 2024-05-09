@@ -1,5 +1,4 @@
 #![deny(unsafe_code)]
-#![allow(unused_mut)]
 
 use crate::params::{PolySynthParamModulations, PolySynthParams};
 use crate::poly_oscillator::PolyOscillator;
@@ -7,6 +6,7 @@ use clack_extensions::state::PluginState;
 use clack_extensions::{audio_ports::*, note_ports::*, params::*};
 use clack_hot_reload::export_reloadable_clap_entry;
 use clack_plugin::clack_entry;
+use clack_plugin::events::spaces::CoreEventSpace;
 use clack_plugin::prelude::*;
 
 mod oscillator;
@@ -15,7 +15,7 @@ mod poly_oscillator;
 
 /// The type that represents our plugin in Clack.
 ///
-/// This is what implements the [`Plugin`] trait, where all the other sub-types are attached.
+/// This is what implements the [`Plugin`] trait, and where all the other subtypes are attached.
 pub struct PolySynthPlugin;
 
 impl Plugin for PolySynthPlugin {
@@ -39,11 +39,8 @@ impl DefaultPluginFactory for PolySynthPlugin {
     fn get_descriptor() -> PluginDescriptor {
         use clack_plugin::plugin::features::*;
 
-        PluginDescriptor::new(
-            "org.rust-audio.clack-hotreload.polysynth",
-            "Clack PolySynth Example (Hot reload version)",
-        )
-        .with_features([SYNTHESIZER, MONO, INSTRUMENT])
+        PluginDescriptor::new("org.rust-audio.clack.polysynth", "Clack PolySynth Example")
+            .with_features([SYNTHESIZER, MONO, INSTRUMENT])
     }
 
     fn new_shared(_host: HostSharedHandle) -> Result<PolySynthPluginShared, PluginError> {
@@ -66,6 +63,7 @@ impl DefaultPluginFactory for PolySynthPlugin {
 pub struct PolySynthAudioProcessor<'a> {
     /// The oscillator bank.
     poly_osc: PolyOscillator,
+    /// The modulation values for the plugin's parameters.
     modulation_values: PolySynthParamModulations,
     /// A reference to the plugin's shared data.
     shared: &'a PolySynthPluginShared,
@@ -75,7 +73,7 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
     for PolySynthAudioProcessor<'a>
 {
     fn activate(
-        _host: HostAudioThreadHandle<'a>,
+        _host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut PolySynthPluginMainThread,
         shared: &'a PolySynthPluginShared,
         audio_config: PluginAudioConfiguration,
@@ -116,18 +114,17 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
         for event_batch in events.input.batch() {
             // Handle all the events (note or param) for this batch.
             for event in event_batch.events() {
-                self.poly_osc.handle_event(event);
-                self.shared.params.handle_event(event);
-                self.modulation_values.handle_event(event);
+                self.handle_event(event);
             }
-
-            // Received the updated volume parameter
-            let volume = self.shared.params.get_volume() + self.modulation_values.volume();
 
             // With all the events out of the way, we can now handle a whole batch of sample
             // all at once.
             let output_buffer = &mut output_buffer[event_batch.sample_bounds()];
-            self.poly_osc.generate_next_samples(output_buffer, volume);
+            self.poly_osc.generate_next_samples(
+                output_buffer,
+                self.shared.params.get_volume(),
+                self.modulation_values.volume(),
+            );
         }
 
         // If somehow the host didn't give us a mono output, we copy the output to all channels
@@ -157,6 +154,33 @@ impl<'a> PluginAudioProcessor<'a, PolySynthPluginShared, PolySynthPluginMainThre
     }
 }
 
+impl<'a> PolySynthAudioProcessor<'a> {
+    /// Handles an incoming event.
+    fn handle_event(&mut self, event: &UnknownEvent) {
+        match event.as_core_event() {
+            Some(CoreEventSpace::NoteOn(event)) => self.poly_osc.handle_note_on(event),
+            Some(CoreEventSpace::NoteOff(event)) => self.poly_osc.handle_note_off(event),
+            Some(CoreEventSpace::ParamValue(event)) => {
+                // This is a global modulation event
+                if event.pckn().matches_all() {
+                    self.shared.params.handle_event(event)
+                } else {
+                    self.poly_osc.handle_param_value(event)
+                }
+            }
+            Some(CoreEventSpace::ParamMod(event)) => {
+                // This is a global modulation event
+                if event.pckn().matches_all() {
+                    self.modulation_values.handle_event(event)
+                } else {
+                    self.poly_osc.handle_param_mod(event)
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 impl<'a> PluginAudioPortsImpl for PolySynthPluginMainThread<'a> {
     fn count(&mut self, is_input: bool) -> u32 {
         if is_input {
@@ -169,7 +193,7 @@ impl<'a> PluginAudioPortsImpl for PolySynthPluginMainThread<'a> {
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         if !is_input && index == 0 {
             writer.set(&AudioPortInfo {
-                id: 1,
+                id: ClapId::new(1),
                 name: b"main",
                 channel_count: 1,
                 flags: AudioPortFlags::IS_MAIN,
@@ -192,7 +216,7 @@ impl<'a> PluginNotePortsImpl for PolySynthPluginMainThread<'a> {
     fn get(&mut self, index: u32, is_input: bool, writer: &mut NotePortInfoWriter) {
         if is_input && index == 0 {
             writer.set(&NotePortInfo {
-                id: 1,
+                id: ClapId::new(1),
                 name: b"main",
                 preferred_dialect: Some(NoteDialect::Clap),
                 supported_dialects: NoteDialects::CLAP,

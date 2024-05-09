@@ -1,11 +1,10 @@
 use clack_host::events::event_types::NoteOnEvent;
 use clack_host::events::spaces::CoreEventSpace;
-use clack_host::events::Match::Specific;
 use clack_host::prelude::{EventBuffer, InputEvents, Pckn};
 
 #[derive(Debug)]
 struct ActiveNote {
-    port: u16,
+    port_index: u16,
     channel: u16,
     key: u16,
     note_id: u32,
@@ -16,7 +15,7 @@ impl ActiveNote {
     fn to_note_event(&self) -> NoteOnEvent {
         NoteOnEvent::new(
             0,
-            Pckn::new(self.port, self.channel, self.key, self.note_id),
+            Pckn::new(self.port_index, self.channel, self.key, self.note_id),
             self.velocity,
         )
     }
@@ -25,7 +24,7 @@ impl ActiveNote {
         Some(Self {
             // Some hosts won't populate note_id
             note_id: event.note_id().into_specific().unwrap_or(0),
-            port: event.port().into_specific()?,
+            port_index: event.port_index().into_specific()?,
             channel: event.channel().into_specific()?,
             key: event.key().into_specific()?,
             velocity: event.velocity(),
@@ -35,10 +34,10 @@ impl ActiveNote {
 
 impl PartialEq<Pckn> for ActiveNote {
     fn eq(&self, other: &Pckn) -> bool {
-        other.note_id.matches(&Specific(self.note_id))
-            && other.port.matches(&Specific(self.port))
-            && other.channel.matches(&Specific(self.channel))
-            && other.key.matches(&Specific(self.key))
+        other.note_id.matches(self.note_id)
+            && other.port_index.matches(self.port_index)
+            && other.channel.matches(self.channel)
+            && other.key.matches(self.key)
     }
 }
 

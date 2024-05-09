@@ -1,4 +1,4 @@
-// #![deny(unsafe_code)] TODO
+#![deny(unsafe_code)]
 
 mod entry;
 mod util;
@@ -24,12 +24,6 @@ macro_rules! export_reloadable_clap_entry {
                 #[no_mangle]
                 pub static __clack_hotreload_wrapped_entry: $crate::_macro_utils::EntryDescriptor =
                     $entry_value;
-
-                #[allow(non_upper_case_globals, missing_docs)]
-                #[allow(unsafe_code)]
-                #[allow(warnings, unused)]
-                #[no_mangle]
-                pub static __clack_hotreload_foo: u32 = 42699;
 
                 |p| $crate::_macro_utils::HotReloaderEntry::new(p, &__clack_hotreload_wrapped_entry)
             })

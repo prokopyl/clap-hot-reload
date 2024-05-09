@@ -1,5 +1,5 @@
-use crate::wrapper::{WrapperHost, WrapperPlugin};
-use clack_extensions::audio_ports::{HostAudioPorts, PluginAudioPorts};
+use crate::wrapper::WrapperPlugin;
+use clack_extensions::audio_ports::PluginAudioPorts;
 use clack_extensions::note_ports::PluginNotePorts;
 use clack_extensions::params::PluginParams;
 use clack_extensions::state::PluginState;
@@ -16,31 +16,6 @@ mod state;
 pub use state::*;
 mod timer;
 pub use timer::*;
-
-pub struct ParentHostExtensions<'a> {
-    handle: HostSharedHandle<'a>,
-    audio_ports: Option<HostAudioPorts>,
-}
-
-impl<'a> ParentHostExtensions<'a> {
-    pub fn new(handle: HostSharedHandle<'a>) -> Self {
-        Self {
-            audio_ports: handle.get_extension(),
-            handle,
-        }
-    }
-
-    #[inline]
-    pub fn handle(&self) -> &HostSharedHandle<'a> {
-        &self.handle
-    }
-
-    pub fn declare_to_plugin(&self, builder: &mut HostExtensions<WrapperHost>) {
-        if self.audio_ports.is_some() {
-            builder.register::<HostAudioPorts>();
-        }
-    }
-}
 
 pub struct WrappedPluginExtensions {
     audio_ports: Option<PluginAudioPorts>,
@@ -69,6 +44,7 @@ impl WrappedPluginExtensions {
     }
 }
 
+// TODO: don't (necessarily?) report extensions based on plugin support
 #[derive(Clone)]
 pub struct ReportedExtensions {
     audio_ports: bool,

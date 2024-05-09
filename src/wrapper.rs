@@ -1,3 +1,5 @@
+use crate::watcher::BundleReceiver;
+use clack_extensions::audio_ports::HostAudioPorts;
 use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::timer::PluginTimer;
 use clack_host::prelude::*;
@@ -6,18 +8,17 @@ use clack_plugin::prelude::{HostMainThreadHandle, HostSharedHandle};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
-pub struct WrapperHost;
-
 mod audio_processor;
-use audio_processor::*;
-
-mod extensions;
-use crate::watcher::BundleReceiver;
-use extensions::*;
-
 mod channel;
+mod extensions;
+mod requests;
 
+use audio_processor::*;
 use channel::*;
+use extensions::*;
+use requests::*;
+
+pub struct WrapperHost;
 
 impl WrapperHost {
     pub fn new_instance(
@@ -25,20 +26,12 @@ impl WrapperHost {
         bundle: &PluginBundle,
         instantiated_plugin_id: &CStr,
     ) -> PluginInstance<Self> {
-        let info = HostInfo::from_plugin(&host);
-
-        // FIXME: nah that's just UB
-        // This is a really ugly hack, due to the fact that plugin instances are essentially 'static
-        // for now. This is fixed in the plugin-instance-sublifetimes branch of clack but is blocked
-        // on a borrow checker limitation bug:
-        // https://internals.rust-lang.org/t/is-due-to-current-limitations-in-the-borrow-checker-overzealous/17818
-        let host: HostMainThreadHandle<'static> = unsafe { core::mem::transmute_copy(host) };
-        let shared = host.shared();
+        let info = HostInfo::from_plugin(host);
 
         // TODO: unwrap
         let instance = PluginInstance::<WrapperHost>::new(
-            |_| WrapperHostShared::<'_>::new(shared),
-            |s| WrapperHostMainThread::new(s, host),
+            |_| WrapperHostShared::new(),
+            |s| WrapperHostMainThread::new(s),
             bundle,
             instantiated_plugin_id,
             &info,
@@ -60,25 +53,25 @@ impl WrapperHost {
 }
 
 impl HostHandlers for WrapperHost {
-    type Shared<'a> = WrapperHostShared<'a>;
+    type Shared<'a> = WrapperHostShared;
     type MainThread<'a> = WrapperHostMainThread<'a>;
     type AudioProcessor<'a> = WrapperHostAudioProcessor<'a>;
 
-    fn declare_extensions(builder: &mut HostExtensions<Self>, shared: &Self::Shared<'_>) {
-        shared.parent.declare_to_plugin(builder);
+    fn declare_extensions(builder: &mut HostExtensions<Self>, _shared: &Self::Shared<'_>) {
+        builder.register::<HostAudioPorts>();
     }
 }
 
-pub struct WrapperHostShared<'a> {
+pub struct WrapperHostShared {
     pub(crate) plugin: OnceLock<WrappedPluginExtensions>,
-    parent: ParentHostExtensions<'a>,
+    requests: PluginRequests,
 }
 
-impl<'a> WrapperHostShared<'a> {
-    pub fn new(parent: HostSharedHandle<'a>) -> Self {
+impl WrapperHostShared {
+    pub fn new() -> Self {
         Self {
             plugin: OnceLock::new(),
-            parent: ParentHostExtensions::new(parent),
+            requests: PluginRequests::new(),
         }
     }
 
@@ -87,37 +80,39 @@ impl<'a> WrapperHostShared<'a> {
     }
 }
 
-impl<'a> SharedHandler<'a> for WrapperHostShared<'a> {
+impl<'a> SharedHandler<'a> for WrapperHostShared {
     fn initializing(&self, instance: InitializingPluginHandle<'a>) {
         let _ = self.plugin.set(WrappedPluginExtensions::new(instance));
     }
 
     fn request_restart(&self) {
-        self.parent.handle().request_restart()
+        todo!()
     }
 
     fn request_process(&self) {
-        self.parent.handle().request_process()
+        todo!()
     }
 
     fn request_callback(&self) {
-        self.parent.handle().request_callback()
+        self.requests.request_callback()
     }
 }
 
 pub struct WrapperHostMainThread<'a> {
-    shared: &'a WrapperHostShared<'a>,
+    shared: &'a WrapperHostShared,
     plugin: Option<InitializedPluginHandle<'a>>,
-    parent: HostMainThreadHandle<'a>,
 }
 
 impl<'a> WrapperHostMainThread<'a> {
-    pub fn new(shared: &'a WrapperHostShared<'a>, parent: HostMainThreadHandle<'a>) -> Self {
+    pub fn new(shared: &'a WrapperHostShared) -> Self {
         Self {
             shared,
-            parent,
             plugin: None,
         }
+    }
+
+    pub fn process_requests(&mut self, parent_host: &mut HostMainThreadHandle) {
+        self.shared.requests.process_requests(parent_host);
     }
 }
 
@@ -128,8 +123,8 @@ impl<'a> MainThreadHandler<'a> for WrapperHostMainThread<'a> {
 }
 
 pub struct WrapperHostAudioProcessor<'a> {
-    _shared: &'a WrapperHostShared<'a>,
-    // parent: HostAudioThreadHandle<'a>, // FIXME: audioProcessor vs audioThread
+    _shared: &'a WrapperHostShared,
+    // parent: HostAudioProcessorHandle<'a>,
 }
 
 impl<'a> AudioProcessorHandler<'a> for WrapperHostAudioProcessor<'a> {}
@@ -202,15 +197,20 @@ impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThre
 
 impl<'a> WrapperPluginMainThread<'a> {
     pub fn new(
-        host: HostMainThreadHandle<'a>,
+        mut host: HostMainThreadHandle<'a>,
         shared: &'a WrapperPluginShared<'a>,
         mut plugin_instance: PluginInstance<WrapperHost>,
         bundle_receiver: Option<BundleReceiver>,
         plugin_id: CString,
     ) -> Result<Self, PluginError> {
         // host.shared().request_callback(); // To finish configuring timers. TODO: Bitwig bug?
+        let audio_ports = host.get_extension();
         Ok(Self {
-            audio_ports_info: PluginAudioPortsInfo::new(&mut plugin_instance),
+            audio_ports_info: PluginAudioPortsInfo::new(
+                &mut plugin_instance,
+                &mut host,
+                audio_ports,
+            ),
             param_info_cache: ParamInfoCache::new(&mut plugin_instance),
 
             host,

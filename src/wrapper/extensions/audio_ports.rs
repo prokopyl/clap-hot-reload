@@ -4,12 +4,19 @@ use clack_extensions::audio_ports::*;
 // TODO: handle rescan
 pub struct PluginAudioPortsInfo {
     output_channels_count_per_port: Vec<u32>,
+
+    host_supported_rescan_flags: RescanType,
 }
 
 impl PluginAudioPortsInfo {
-    pub fn new(plugin: &mut PluginInstance<WrapperHost>) -> Self {
+    pub fn new(
+        plugin: &mut PluginInstance<WrapperHost>,
+        host: &mut HostMainThreadHandle,
+        ext: Option<HostAudioPorts>,
+    ) -> Self {
         let mut info = Self {
             output_channels_count_per_port: Vec::new(),
+            host_supported_rescan_flags: get_host_supported_rescan_types(host, ext),
         };
         info.update(plugin);
         info
@@ -45,19 +52,11 @@ impl PluginAudioPortsInfo {
 
 impl<'a> HostAudioPortsImpl for WrapperHostMainThread<'a> {
     fn is_rescan_flag_supported(&self, flag: RescanType) -> bool {
-        let Some(audio_ports) = self.shared.parent.audio_ports else {
-            unreachable!()
-        };
-
-        audio_ports.is_rescan_flag_supported(&self.parent, flag)
+        todo!()
     }
 
     fn rescan(&mut self, flag: RescanType) {
-        let Some(audio_ports) = self.shared.parent.audio_ports else {
-            unreachable!()
-        };
-
-        audio_ports.rescan(&mut self.parent, flag)
+        todo!()
     }
 }
 
@@ -83,4 +82,23 @@ impl<'a> PluginAudioPortsImpl for WrapperPluginMainThread<'a> {
             writer.set(&data)
         }
     }
+}
+
+fn get_host_supported_rescan_types(
+    host: &mut HostMainThreadHandle,
+    ext: Option<HostAudioPorts>,
+) -> RescanType {
+    let Some(ext) = ext else {
+        return RescanType::empty();
+    };
+
+    let mut supported = RescanType::empty();
+
+    for flag in RescanType::all() {
+        if ext.is_rescan_flag_supported(host, flag) {
+            supported |= flag;
+        }
+    }
+
+    supported
 }

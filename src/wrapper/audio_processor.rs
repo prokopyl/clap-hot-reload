@@ -1,7 +1,7 @@
 use crate::wrapper::audio_processor::note_tracker::NoteTracker;
 use crate::wrapper::*;
 use clack_host::prelude::ProcessStatus;
-use clack_plugin::host::HostAudioThreadHandle;
+use clack_plugin::host::HostAudioProcessorHandle;
 use clack_plugin::plugin::{PluginAudioProcessor, PluginError};
 use clack_plugin::prelude::{Audio, Events, PluginAudioConfiguration, Process};
 

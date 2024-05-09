@@ -13,7 +13,6 @@ const fn cstr(bytes: &'static [u8]) -> &'static CStr {
 }
 
 const WRAPPED_ENTRY_SYMBOL_NAME: &CStr = cstr(b"__clack_hotreload_wrapped_entry\0");
-const FOO_SYMBOL_NAME: &CStr = cstr(b"__clack_hotreload_foo\0");
 
 #[allow(unsafe_code)]
 pub fn load_if_different_bundle(
@@ -21,12 +20,6 @@ pub fn load_if_different_bundle(
     self_path: &Path,
 ) -> Result<Option<PluginBundle>, EntryLoadError> {
     let lib = unsafe { Library::new(self_path) }.map_err(|_| EntryLoadError)?;
-
-    let foo_symbol = unsafe { lib.get::<*mut u32>(FOO_SYMBOL_NAME.to_bytes_with_nul()) }
-        .map_err(|_| EntryLoadError)?;
-
-    let foo = unsafe { **foo_symbol };
-    println!("Library FOO value: {foo}");
 
     let symbol =
         unsafe { lib.get::<*mut EntryDescriptor>(WRAPPED_ENTRY_SYMBOL_NAME.to_bytes_with_nul()) }

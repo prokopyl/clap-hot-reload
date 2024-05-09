@@ -129,7 +129,7 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         }
     }
 
-    fn get_value(&mut self, param_id: u32) -> Option<f64> {
+    fn get_value(&mut self, param_id: ClapId) -> Option<f64> {
         let Some(params) = self.wrapped_extensions().params else {
             return None;
         };
@@ -139,7 +139,7 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
 
     fn value_to_text(
         &mut self,
-        param_id: u32,
+        param_id: ClapId,
         value: f64,
         writer: &mut ParamDisplayWriter,
     ) -> std::fmt::Result {
@@ -154,7 +154,7 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         writer.write_str(&str)
     }
 
-    fn text_to_value(&mut self, param_id: u32, text: &CStr) -> Option<f64> {
+    fn text_to_value(&mut self, param_id: ClapId, text: &CStr) -> Option<f64> {
         let Some(params) = self.wrapped_extensions().params else {
             return None;
         };

@@ -15,7 +15,7 @@ use output_buffers::*;
 const CROSSFADE_TIME: f64 = 0.25;
 
 pub struct WrapperPluginAudioProcessor<'a> {
-    _host: HostAudioThreadHandle<'a>,
+    _host: HostAudioProcessorHandle<'a>,
     _shared: &'a WrapperPluginShared<'a>,
     pub(crate) current_audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
     fade_out_audio_processor: Option<clack_host::process::PluginAudioProcessor<WrapperHost>>,
@@ -55,7 +55,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
     for WrapperPluginAudioProcessor<'a>
 {
     fn activate(
-        host: HostAudioThreadHandle<'a>,
+        host: HostAudioProcessorHandle<'a>,
         main_thread: &mut WrapperPluginMainThread<'a>,
         shared: &'a WrapperPluginShared<'a>,
         audio_config: PluginAudioConfiguration,

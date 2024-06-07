@@ -1,5 +1,6 @@
 use crate::wrapper::WrapperPlugin;
 use clack_extensions::audio_ports::PluginAudioPorts;
+use clack_extensions::gui::PluginGui;
 use clack_extensions::note_ports::PluginNotePorts;
 use clack_extensions::params::PluginParams;
 use clack_extensions::state::PluginState;
@@ -7,18 +8,21 @@ use clack_host::prelude::*;
 use clack_plugin::prelude::*;
 
 mod audio_ports;
-pub use audio_ports::*;
-
+mod gui;
 mod note_ports;
 mod params;
-pub use params::*;
 mod state;
-pub use state::*;
 mod timer;
+
+pub use audio_ports::*;
+pub use gui::*;
+pub use params::*;
+pub use state::*;
 pub use timer::*;
 
 pub struct WrappedPluginExtensions {
     audio_ports: Option<PluginAudioPorts>,
+    gui: Option<PluginGui>,
     note_ports: Option<PluginNotePorts>,
     params: Option<PluginParams>,
     state: Option<PluginState>,
@@ -28,6 +32,7 @@ impl WrappedPluginExtensions {
     pub fn new(handle: InitializingPluginHandle) -> Self {
         Self {
             audio_ports: handle.get_extension(),
+            gui: handle.get_extension(),
             note_ports: handle.get_extension(),
             params: handle.get_extension(),
             state: handle.get_extension(),
@@ -70,5 +75,7 @@ impl ReportedExtensions {
         if self.state {
             builder.register::<PluginState>();
         }
+
+        builder.register::<PluginGui>();
     }
 }

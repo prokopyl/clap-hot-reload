@@ -7,11 +7,11 @@ pub fn transfer_state(
     src: &mut PluginInstance<WrapperHost>,
     dst: &mut PluginInstance<WrapperHost>,
 ) -> Result<(), StateError> {
-    let Some(src_state) = src.use_shared_handler(|h| h.wrapped_plugin().state) else {
+    let Some(src_state) = src.access_shared_handler(|h| h.wrapped_plugin().state) else {
         return Ok(());
     };
 
-    let Some(dst_state) = dst.use_shared_handler(|h| h.wrapped_plugin().state) else {
+    let Some(dst_state) = dst.access_shared_handler(|h| h.wrapped_plugin().state) else {
         return Ok(());
     };
 
@@ -22,7 +22,7 @@ pub fn transfer_state(
 
     let mut cursor = Cursor::new(buf);
     let mut input_stream = InputStream::from_reader(&mut cursor);
-    dst_state.load(&mut src.plugin_handle(), &mut input_stream)?;
+    dst_state.load(&mut dst.plugin_handle(), &mut input_stream)?;
 
     Ok(())
 }

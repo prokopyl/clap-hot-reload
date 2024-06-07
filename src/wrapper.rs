@@ -44,7 +44,7 @@ impl WrapperHost {
     pub fn activate_instance(
         plugin_instance: &mut PluginInstance<WrapperHost>,
         audio_config: PluginAudioConfiguration,
-    ) -> Result<StoppedPluginAudioProcessor<WrapperHost>, HostError> {
+    ) -> Result<StoppedPluginAudioProcessor<WrapperHost>, PluginInstanceError> {
         plugin_instance.activate(
             |shared, _| WrapperHostAudioProcessor { _shared: shared },
             audio_config,
@@ -154,7 +154,8 @@ pub struct WrapperPluginShared<'a> {
 
 impl<'a> WrapperPluginShared<'a> {
     pub fn new(host: HostSharedHandle<'a>, plugin_handle: &PluginInstance<WrapperHost>) -> Self {
-        let reported_extensions = plugin_handle.use_shared_handler(|h| h.wrapped_plugin().report());
+        let reported_extensions =
+            plugin_handle.access_shared_handler(|h| h.wrapped_plugin().report());
 
         Self {
             _host: host,
@@ -177,6 +178,7 @@ pub struct WrapperPluginMainThread<'a> {
     current_audio_config: Option<PluginAudioConfiguration>,
     audio_ports_info: PluginAudioPortsInfo,
     param_info_cache: ParamInfoCache,
+    gui: WrapperGui,
 }
 
 impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThread<'a> {
@@ -212,6 +214,7 @@ impl<'a> WrapperPluginMainThread<'a> {
                 audio_ports,
             ),
             param_info_cache: ParamInfoCache::new(&mut plugin_instance),
+            gui: WrapperGui::new(&host),
 
             host,
             shared,
@@ -227,7 +230,7 @@ impl<'a> WrapperPluginMainThread<'a> {
 
     pub fn wrapped_extensions(&self) -> &WrappedPluginExtensions {
         self.plugin_instance
-            .use_shared_handler(|h| h.wrapped_plugin())
+            .access_shared_handler(|h| h.wrapped_plugin())
     }
 
     pub fn plugin_handle(&mut self) -> PluginMainThreadHandle {
@@ -252,14 +255,21 @@ impl<'a> WrapperPluginMainThread<'a> {
             eprintln!("Could not transfer state to new hot-loaded instance: {e}");
         }
 
-        let old_instance = core::mem::replace(&mut self.plugin_instance, new_instance);
+        let mut old_instance = core::mem::replace(&mut self.plugin_instance, new_instance);
 
         // TODO: handle the function crashing here and ending up with a partial swap?
         let required_rescan = self.param_info_cache.update(&mut self.plugin_instance);
 
         if let Some(host_params) = self.shared.params {
-            // Always rescan text renderings, we can never really now if it changed or not
+            // Always rescan text renderings, we can never really know if it changed or not
             host_params.rescan(&mut self.host, required_rescan | ParamRescanFlags::TEXT)
+        }
+
+        if let Err(e) = self
+            .gui
+            .transfer_gui(&mut old_instance, &mut self.plugin_instance)
+        {
+            eprintln!("{e}"); // TODO: handle errors(?)
         }
 
         // If there's no channel, we aren't active or processing. No need to keep the old instance around.

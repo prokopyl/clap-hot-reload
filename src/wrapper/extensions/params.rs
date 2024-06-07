@@ -76,7 +76,7 @@ impl ParamInfoCache {
     }
 
     pub fn update(&mut self, instance: &mut PluginInstance<WrapperHost>) -> ParamRescanFlags {
-        let Some(params) = instance.use_shared_handler(|h| h.wrapped_plugin().params) else {
+        let Some(params) = instance.access_shared_handler(|h| h.wrapped_plugin().params) else {
             return ParamRescanFlags::empty();
         };
 
@@ -117,7 +117,6 @@ impl ParamInfoCache {
     }
 }
 
-// FIXME: Plugin params trait name + module paths are inconsistent
 impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
     fn count(&mut self) -> u32 {
         self.param_info_cache.params.len() as u32
@@ -130,11 +129,9 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
     }
 
     fn get_value(&mut self, param_id: ClapId) -> Option<f64> {
-        let Some(params) = self.wrapped_extensions().params else {
-            return None;
-        };
-
-        params.get_value(&mut self.plugin_handle(), param_id)
+        self.wrapped_extensions()
+            .params?
+            .get_value(&mut self.plugin_handle(), param_id)
     }
 
     fn value_to_text(
@@ -144,7 +141,7 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
         writer: &mut ParamDisplayWriter,
     ) -> std::fmt::Result {
         let Some(params) = self.wrapped_extensions().params else {
-            todo!()
+            return Err(std::fmt::Error);
         };
 
         let mut buf = [MaybeUninit::zeroed(); 128];
@@ -155,11 +152,9 @@ impl<'a> PluginMainThreadParams for WrapperPluginMainThread<'a> {
     }
 
     fn text_to_value(&mut self, param_id: ClapId, text: &CStr) -> Option<f64> {
-        let Some(params) = self.wrapped_extensions().params else {
-            return None;
-        };
-
-        params.text_to_value(&mut self.plugin_handle(), param_id, text)
+        self.wrapped_extensions()
+            .params?
+            .text_to_value(&mut self.plugin_handle(), param_id, text)
     }
 
     fn flush(
@@ -187,7 +182,7 @@ impl<'a> PluginAudioProcessorParams for WrapperPluginAudioProcessor<'a> {
     ) {
         let Some(params) = self
             .current_audio_processor
-            .use_shared_handler(|h| h.wrapped_plugin().params)
+            .access_shared_handler(|h| h.wrapped_plugin().params)
         else {
             return;
         };

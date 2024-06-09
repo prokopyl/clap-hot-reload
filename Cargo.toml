@@ -24,6 +24,6 @@ members = [
 ]
 
 [workspace.dependencies]
-clack-plugin = { path = "../rust-clap/plugin", version = "0.1.0" }
-clack-host = { path = "../rust-clap/host", version = "0.1.0" }
-clack-extensions = { path = "../rust-clap/extensions", version = "0.1.0" }
+clack-plugin = { git = "https://github.com/prokopyl/clack", version = "0.1.0" }
+clack-host = { git = "https://github.com/prokopyl/clack", version = "0.1.0" }
+clack-extensions = { git = "https://github.com/prokopyl/clack", version = "0.1.0" }

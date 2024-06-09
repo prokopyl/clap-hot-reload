@@ -1,6 +1,6 @@
 # clap-hot-reload
 
-Add hot-reload capabilities to any Rust CLAP plugin!
+Add hot-reload capabilities to any Rust [CLAP](https://github.com/free-audio/clap) plugin!
 
 This is a small library that wraps a traditional CLAP entry structure. When loaded by a host, it spawns a file
 watcher thread, and reloads all the contained plugins whenever the CLAP bundle changes.
@@ -23,4 +23,8 @@ my computer™.
 - [ ] Write documentation and publish on crates.io
 - [ ] Expose a C API, so it can be used by non-Rust projects
 
+## License
 
+`clap-hot-reload` is distributed under the terms of both the [MIT license](LICENSE-MIT) and
+the [Apache license, version 2.0](LICENSE-APACHE).
+Contributions are accepted under the same terms.

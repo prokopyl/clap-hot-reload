@@ -4,10 +4,10 @@ use crate::params::{PolySynthParamModulations, PolySynthParams};
 use crate::poly_oscillator::PolyOscillator;
 use clack_extensions::state::PluginState;
 use clack_extensions::{audio_ports::*, note_ports::*, params::*};
-use clack_hot_reload::export_reloadable_clap_entry;
 use clack_plugin::clack_entry;
 use clack_plugin::events::spaces::CoreEventSpace;
 use clack_plugin::prelude::*;
+use clap_hot_reload::export_reloadable_clap_entry;
 
 mod oscillator;
 mod params;

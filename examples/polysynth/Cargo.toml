@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 [dependencies]
 clack-plugin = { workspace = true }
 clack-extensions = { workspace = true, features = ["audio-ports", "clack-plugin", "note-ports", "params", "state"] }
-clack-hot-reload = { path = "../.." }
+clap-hot-reload = { path = "../.." }

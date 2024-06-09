@@ -1,5 +1,5 @@
 [package]
-name = "clack-hot-reload"
+name = "clap-hot-reload"
 version = "0.1.0"
 edition = "2021"
 

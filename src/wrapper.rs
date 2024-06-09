@@ -1,5 +1,7 @@
 use crate::watcher::BundleReceiver;
 use clack_extensions::audio_ports::HostAudioPorts;
+use clack_extensions::gui::HostGui;
+use clack_extensions::latency::HostLatency;
 use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::timer::PluginTimer;
 use clack_host::prelude::*;
@@ -59,19 +61,21 @@ impl HostHandlers for WrapperHost {
 
     fn declare_extensions(builder: &mut HostExtensions<Self>, _shared: &Self::Shared<'_>) {
         builder.register::<HostAudioPorts>();
+        builder.register::<HostGui>();
+        builder.register::<HostLatency>();
     }
 }
 
 pub struct WrapperHostShared {
     pub(crate) plugin: OnceLock<WrappedPluginExtensions>,
-    requests: PluginRequests,
+    requests: PluginSharedRequests,
 }
 
 impl WrapperHostShared {
     pub fn new() -> Self {
         Self {
             plugin: OnceLock::new(),
-            requests: PluginRequests::new(),
+            requests: PluginSharedRequests::new(),
         }
     }
 
@@ -101,6 +105,7 @@ impl<'a> SharedHandler<'a> for WrapperHostShared {
 pub struct WrapperHostMainThread<'a> {
     shared: &'a WrapperHostShared,
     plugin: Option<InitializedPluginHandle<'a>>,
+    requests: PluginMainThreadRequests,
 }
 
 impl<'a> WrapperHostMainThread<'a> {
@@ -108,11 +113,19 @@ impl<'a> WrapperHostMainThread<'a> {
         Self {
             shared,
             plugin: None,
+            requests: PluginMainThreadRequests::new(),
         }
     }
 
-    pub fn process_requests(&mut self, parent_host: &mut HostMainThreadHandle) {
-        self.shared.requests.process_requests(parent_host);
+    pub fn process_requests(
+        &mut self,
+        parent_host: &mut HostMainThreadHandle,
+        extensions: &OuterHostExtensions,
+    ) {
+        self.shared
+            .requests
+            .process_requests(parent_host, extensions);
+        self.requests.process_requests(parent_host, extensions)
     }
 }
 
@@ -149,7 +162,7 @@ impl Plugin for WrapperPlugin {
 pub struct WrapperPluginShared<'a> {
     _host: HostSharedHandle<'a>,
     reported_extensions: ReportedExtensions,
-    params: Option<HostParams>,
+    host_extensions: OuterHostExtensions,
 }
 
 impl<'a> WrapperPluginShared<'a> {
@@ -158,8 +171,8 @@ impl<'a> WrapperPluginShared<'a> {
             plugin_handle.access_shared_handler(|h| h.wrapped_plugin().report());
 
         Self {
+            host_extensions: OuterHostExtensions::new(&host),
             _host: host,
-            params: host.get_extension(),
             reported_extensions,
         }
     }
@@ -193,6 +206,7 @@ impl<'a> PluginMainThread<'a, WrapperPluginShared<'a>> for WrapperPluginMainThre
             channel.destroy_awaiting()
         }
 
+        // TODO: make sure the plugin has requested one
         self.plugin_instance.call_on_main_thread_callback()
     }
 }
@@ -260,14 +274,14 @@ impl<'a> WrapperPluginMainThread<'a> {
         // TODO: handle the function crashing here and ending up with a partial swap?
         let required_rescan = self.param_info_cache.update(&mut self.plugin_instance);
 
-        if let Some(host_params) = self.shared.params {
+        if let Some(host_params) = self.shared.host_extensions.params {
             // Always rescan text renderings, we can never really know if it changed or not
             host_params.rescan(&mut self.host, required_rescan | ParamRescanFlags::TEXT)
         }
 
-        if let Err(e) = self
-            .gui
-            .transfer_gui(&mut old_instance, &mut self.plugin_instance)
+        if let Err(e) =
+            self.gui
+                .transfer_gui(&mut old_instance, &mut self.plugin_instance, &mut self.host)
         {
             eprintln!("{e}"); // TODO: handle errors(?)
         }
@@ -308,5 +322,11 @@ impl<'a> WrapperPluginMainThread<'a> {
         } else {
             drop(audio_processor)
         }
+    }
+
+    pub fn process_requests(&mut self) {
+        self.plugin_instance.access_handler_mut(|h| {
+            h.process_requests(&mut self.host, &self.shared.host_extensions)
+        })
     }
 }

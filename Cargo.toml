@@ -8,9 +8,10 @@ edition = "2021"
 [dependencies]
 clack-plugin = { workspace = true }
 clack-host = { workspace = true, features = ["clack-plugin"] }
-clack-extensions = { workspace = true, features = ["audio-ports", "gui", "note-ports", "params", "state", "timer", "clack-host", "clack-plugin"] }
+clack-extensions = { workspace = true, features = ["audio-ports", "gui", "latency", "note-ports", "params", "state", "timer", "clack-host", "clack-plugin"] }
 
 crossbeam-channel = "0.5.9"
+crossbeam-utils = "0.8.20"
 notify-debouncer-full = "0.3.1"
 libloading = "0.8.1"
 tempfile = "3.10.1"

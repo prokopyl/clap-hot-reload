@@ -1,13 +1,19 @@
 #![allow(unsafe_code)] // Needed for raw window handles
 
-use crate::wrapper::{WrapperHost, WrapperPluginMainThread};
+use crate::wrapper::extensions::OuterHostExtensions;
+use crate::wrapper::{WrapperHost, WrapperHostShared, WrapperPluginMainThread};
 use clack_extensions::gui::{
-    GuiConfiguration, GuiResizeHints, GuiSize, HostGui, PluginGui, PluginGuiImpl, Window,
+    GuiConfiguration, GuiResizeHints, GuiSize, HostGui, HostGuiImpl, PluginGui, PluginGuiImpl,
+    Window,
 };
+use clack_host::host::HostError;
 use clack_host::prelude::PluginInstance;
 use clack_plugin::plugin::PluginError;
-use clack_plugin::prelude::HostSharedHandle;
+use clack_plugin::prelude::{HostMainThreadHandle, HostSharedHandle};
+use crossbeam_utils::atomic::AtomicCell;
 use std::ffi::CString;
+use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 enum Status {
     Destroyed,
@@ -54,6 +60,7 @@ impl WrapperGui {
         &self,
         old_instance: &mut PluginInstance<WrapperHost>,
         new_instance: &mut PluginInstance<WrapperHost>,
+        host: &mut HostMainThreadHandle,
     ) -> Result<(), PluginError> {
         // TODO: this all assumes the host is fine in its sequencing
         if let Some(gui) = old_instance.access_shared_handler(|s| s.wrapped_plugin().gui) {
@@ -99,8 +106,11 @@ impl WrapperGui {
                 if let Some(size) = self.size {
                     gui.set_size(plugin_handle, size)?; // TODO: errors
                 }
-            } else {
-                // TODO: inform host that size (might) have changed
+            } else if let Some(host_gui) = self.host_gui {
+                if let Some(size) = gui.get_size(plugin_handle) {
+                    // TODO: prevent spurious resizes if UI is of the same size
+                    let _ = host_gui.request_resize(host, size.width, size.height);
+                }
             }
 
             if let Some(parent) = self.parent {
@@ -276,5 +286,143 @@ impl<'a> PluginGuiImpl for WrapperPluginMainThread<'a> {
         self.gui.shown = false;
 
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct AtomicGuiSize {
+    width: u32,
+    height: NonZeroU32,
+}
+
+impl AtomicGuiSize {
+    pub fn from_gui_size(size: GuiSize) -> Self {
+        Self {
+            height: NonZeroU32::new(size.height).unwrap_or(NonZeroU32::MAX),
+            width: size.width,
+        }
+    }
+
+    pub fn to_gui_size(self) -> GuiSize {
+        let height = if self.height == NonZeroU32::MAX {
+            0
+        } else {
+            self.height.get()
+        };
+
+        GuiSize {
+            height,
+            width: self.width,
+        }
+    }
+}
+
+impl HostGuiImpl for WrapperHostShared {
+    fn resize_hints_changed(&self) {
+        self.requests
+            .gui
+            .resize_hints_changed
+            .store(true, Ordering::Relaxed)
+    }
+
+    fn request_resize(&self, new_size: GuiSize) -> Result<(), HostError> {
+        self.requests
+            .gui
+            .resize_requested
+            .store(Some(AtomicGuiSize::from_gui_size(new_size)));
+        Ok(())
+    }
+
+    fn request_show(&self) -> Result<(), HostError> {
+        self.requests
+            .gui
+            .show_requested
+            .store(true, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    fn request_hide(&self) -> Result<(), HostError> {
+        self.requests
+            .gui
+            .hide_requested
+            .store(true, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    fn closed(&self, was_destroyed: bool) {
+        if was_destroyed {
+            self.requests.gui.destroyed.store(true, Ordering::Relaxed)
+        } else {
+            self.requests.gui.closed.store(true, Ordering::Relaxed)
+        }
+    }
+}
+
+pub struct PluginGuiRequests {
+    resize_hints_changed: AtomicBool,
+    resize_requested: AtomicCell<Option<AtomicGuiSize>>,
+    // TODO: merge those bools?
+    show_requested: AtomicBool,
+    hide_requested: AtomicBool,
+    closed: AtomicBool,
+    destroyed: AtomicBool,
+}
+
+impl PluginGuiRequests {
+    pub fn new() -> Self {
+        Self {
+            resize_hints_changed: AtomicBool::new(false),
+            resize_requested: AtomicCell::new(None),
+            show_requested: AtomicBool::new(false),
+            hide_requested: AtomicBool::new(false),
+            closed: AtomicBool::new(false),
+            destroyed: AtomicBool::new(false),
+        }
+    }
+
+    pub fn process_requests(
+        &self,
+        parent_host: &HostSharedHandle,
+        extensions: &OuterHostExtensions,
+    ) {
+        let resize_hints_changed = self.resize_hints_changed.swap(false, Ordering::Relaxed);
+        let gui_resize_requested = self.resize_requested.take();
+        let show_requested = self.show_requested.swap(false, Ordering::Relaxed);
+        let hide_requested = self.hide_requested.swap(false, Ordering::Relaxed);
+        let closed = self.closed.swap(false, Ordering::Relaxed);
+        let destroyed = self.destroyed.swap(false, Ordering::Relaxed);
+
+        let Some(gui) = extensions.gui else {
+            return;
+        };
+
+        // Special case: it makes no sense to call anything else when GUI was destroyed
+        if destroyed {
+            gui.closed(parent_host, true);
+            return;
+        }
+
+        if let Some(size) = gui_resize_requested {
+            let size = size.to_gui_size();
+            let _ = gui.request_resize(parent_host, size.width, size.height); // TODO: handle errors
+        }
+
+        if show_requested {
+            let _ = gui.request_show(parent_host);
+        }
+
+        if hide_requested {
+            let _ = gui.request_hide(parent_host);
+        }
+
+        if resize_hints_changed {
+            gui.resize_hints_changed(parent_host);
+        }
+
+        if closed {
+            gui.closed(parent_host, false);
+        }
     }
 }

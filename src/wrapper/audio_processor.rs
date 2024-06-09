@@ -15,8 +15,8 @@ use output_buffers::*;
 const CROSSFADE_TIME: f64 = 0.25;
 
 pub struct WrapperPluginAudioProcessor<'a> {
-    _host: HostAudioProcessorHandle<'a>,
-    _shared: &'a WrapperPluginShared<'a>,
+    host: HostAudioProcessorHandle<'a>,
+    shared: &'a WrapperPluginShared<'a>,
     pub(crate) current_audio_processor: clack_host::process::PluginAudioProcessor<WrapperHost>,
     fade_out_audio_processor: Option<clack_host::process::PluginAudioProcessor<WrapperHost>>,
     channel: AudioProcessorChannel,
@@ -49,6 +49,13 @@ impl<'a> WrapperPluginAudioProcessor<'a> {
             false
         }
     }
+
+    fn process_requests(&mut self) {
+        self.current_audio_processor.access_shared_handler(|h| {
+            h.requests
+                .process_requests(&self.host, &self.shared.host_extensions)
+        })
+    }
 }
 
 impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThread<'a>>
@@ -64,6 +71,7 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
 
         let audio_processor =
             WrapperHost::activate_instance(&mut main_thread.plugin_instance, audio_config)?;
+        main_thread.process_requests();
 
         let (main_thread_channel, audio_processor_channel) = MainThreadChannel::new_pair();
         // Handle possible leftover channel
@@ -77,8 +85,8 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
         main_thread.current_audio_config = Some(audio_config);
 
         Ok(Self {
-            _host: host,
-            _shared: shared,
+            host,
+            shared,
             current_audio_processor: audio_processor.into(),
             fade_out_audio_processor: None,
             channel: audio_processor_channel,
@@ -181,6 +189,8 @@ impl<'a> PluginAudioProcessor<'a, WrapperPluginShared<'a>, WrapperPluginMainThre
                     process.transport,
                 )?
         };
+
+        self.process_requests();
 
         Ok(status)
     }
